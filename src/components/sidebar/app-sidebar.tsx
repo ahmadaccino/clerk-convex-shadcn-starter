@@ -1,4 +1,4 @@
-import { IconInnerShadowTop } from "@tabler/icons-react";
+import { IconCreditCard, IconInnerShadowTop } from "@tabler/icons-react";
 import * as React from "react";
 
 import { NavUser } from "@/components/sidebar/nav-user";
@@ -21,6 +21,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const menuItems = [
     { title: "Home", icon: HomeIcon, href: "/" },
     { title: "Repayment", icon: LucideBarChart, href: "/repayment" },
+    { title: "Subscription", icon: IconCreditCard, href: "/subscription" },
   ];
 
   return (

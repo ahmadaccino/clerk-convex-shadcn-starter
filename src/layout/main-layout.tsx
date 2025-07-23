@@ -9,9 +9,11 @@ import { Loader2 } from "lucide-react";
 export function MainLayout({
   children,
   pageTitle,
+  pageDescription,
 }: {
   children: React.ReactNode;
   pageTitle: string;
+  pageDescription?: string;
 }) {
   const { isLoaded, isSignedIn } = useAuth();
 
@@ -42,7 +44,7 @@ export function MainLayout({
     >
       <AppSidebar variant="inset" />
       <SidebarInset>
-        <SiteHeader pageTitle={pageTitle} />
+        <SiteHeader pageTitle={pageTitle} pageDescription={pageDescription} />
         {children}
       </SidebarInset>
     </SidebarProvider>
