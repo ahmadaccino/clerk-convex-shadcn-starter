@@ -7,6 +7,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import App from "./App.tsx";
 import { ClerkProviderWrapper } from "./components/clerk-provider-wrapper.tsx";
+import { Toaster } from "./components/ui/sonner.tsx";
 import { ErrorBoundary } from "./ErrorBoundary.tsx";
 import "./index.css";
 
@@ -20,6 +21,7 @@ createRoot(document.getElementById("root")!).render(
           <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
             <BrowserRouter>
               <App />
+              <Toaster />
             </BrowserRouter>
           </ConvexProviderWithClerk>
         </ClerkProviderWrapper>

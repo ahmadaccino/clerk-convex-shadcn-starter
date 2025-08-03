@@ -18,7 +18,12 @@ import * as React from "react";
 import { Pie, PieChart, Label as ReLabel } from "recharts";
 
 import { ChartConfig, ChartTooltipContent } from "@/components/ui/chart";
+import { useMutation } from "convex/react";
+import dayjs from "dayjs";
+import { omit } from "lodash-es";
+import { Loader2Icon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
+import { api } from "../../../convex/_generated/api";
 
 export const description = "A donut chart with text";
 
@@ -101,14 +106,12 @@ function ChartPieDonutText({
 }
 
 type CreditCard1 = {
-  id: string;
   issuer: string;
   balance: number;
   apr: number;
   has_intro_promotion: boolean;
   intro_apr: number;
   intro_expiration_date: Date;
-  intro_months: number; // Deprecated
   compounded: "daily" | "monthly" | "yearly";
   credit_limit: number;
   can_send_balance_transfer: boolean;
@@ -117,33 +120,35 @@ type CreditCard1 = {
   is_balance_transfer_fee_fixed: boolean;
 };
 
+const defaultCreditCard: CreditCard1 = {
+  issuer: "",
+  balance: 0,
+  apr: 0,
+  has_intro_promotion: false,
+  intro_apr: 0,
+  intro_expiration_date: new Date(),
+  compounded: "monthly",
+  credit_limit: 0,
+  can_send_balance_transfer: false,
+  can_recieve_balance_transfer: false,
+  balance_transfer_fee: 0,
+  is_balance_transfer_fee_fixed: false,
+};
+
 export function CreditCardForm({
   onOpenChange,
 }: {
   onOpenChange: (open: boolean) => void;
 }) {
+  const createCreditCard = useMutation(api.creditCards.create);
   const [form, setForm] = useLocalStorageState<CreditCard1>(
     "add-credit-card-form",
     {
-      defaultValue: {
-        id: "",
-        issuer: "",
-        balance: 0,
-        apr: 0,
-        has_intro_promotion: false,
-        intro_apr: 0,
-        intro_expiration_date: new Date(),
-        intro_months: 0, // Deprecated
-        compounded: "monthly",
-        credit_limit: 0,
-        can_send_balance_transfer: false,
-        can_recieve_balance_transfer: false,
-        balance_transfer_fee: 0,
-        is_balance_transfer_fee_fixed: false,
-      },
+      defaultValue: defaultCreditCard,
     },
   );
   const [step, setStep] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
   const isStepValid = useMemo(() => {
     switch (step) {
       case 1:
@@ -171,15 +176,38 @@ export function CreditCardForm({
     );
   }, [form]);
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    onOpenChange(false);
-    toast.success("Credit card added");
+    setIsLoading(true);
+    try {
+      const createdId = await createCreditCard(
+        omit(
+          {
+            ...form,
+            intro_expiration_timestamp: dayjs(
+              form.intro_expiration_date,
+            ).unix(),
+            nickname: form.issuer,
+          },
+          "intro_expiration_date",
+        ),
+      );
+      if (!createdId) throw new Error("Failed to add credit card");
+
+      setForm(defaultCreditCard);
+      onOpenChange(false);
+      toast.success("Credit card added");
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to add credit card");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <>
-      <form className="space-y-4 py-4" onSubmit={handleSubmit}>
+      <form className="space-y-4 pt-4" onSubmit={(e) => void handleSubmit(e)}>
         {step === 1 && (
           <>
             {/* Step 1: Basic info */}
@@ -476,32 +504,42 @@ export function CreditCardForm({
             </div>
           </div>
         )}
+        <DialogFooter>
+          {step > 1 && (
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => setStep(step - 1)}
+            >
+              Back
+            </Button>
+          )}
+          {step < 4 && (
+            <Button
+              type="button"
+              onClick={() => setStep(step + 1)}
+              disabled={!isStepValid}
+            >
+              Next
+            </Button>
+          )}
+          {step === 4 && (
+            <Button type="submit" disabled={!isValid || isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2Icon className="animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                <>
+                  <PlusIcon />
+                  Add Credit Card
+                </>
+              )}
+            </Button>
+          )}
+        </DialogFooter>
       </form>
-      <DialogFooter>
-        {step > 1 && (
-          <Button
-            variant="outline"
-            type="button"
-            onClick={() => setStep(step - 1)}
-          >
-            Back
-          </Button>
-        )}
-        {step < 4 && (
-          <Button
-            type="button"
-            onClick={() => setStep(step + 1)}
-            disabled={!isStepValid}
-          >
-            Next
-          </Button>
-        )}
-        {step === 4 && (
-          <Button type="submit" disabled={!isValid}>
-            Submit
-          </Button>
-        )}
-      </DialogFooter>
     </>
   );
 }
