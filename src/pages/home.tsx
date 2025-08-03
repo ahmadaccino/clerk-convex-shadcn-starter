@@ -488,7 +488,24 @@ function CreditCardForm() {
     balance_transfer_fee: 0,
     is_balance_transfer_fee_fixed: false,
   });
-
+  const [step, setStep] = useState(1);
+  const isStepValid = useMemo(() => {
+    switch (step) {
+      case 1:
+        return (
+          form.issuer.length > 0 && form.balance > 0 && form.credit_limit > 0
+        );
+      case 2:
+        return (
+          !form.has_intro_promotion ||
+          (form.intro_apr > 0 && form.intro_expiration_date > new Date())
+        );
+      case 3:
+        return true; // No required fields beyond step 2
+      default:
+        return true;
+    }
+  }, [form, step]);
   const isValid = useMemo(() => {
     return (
       form.issuer.length > 0 &&
@@ -507,202 +524,247 @@ function CreditCardForm() {
   return (
     <>
       <form className="space-y-4 py-4" onSubmit={handleSubmit}>
-        {/* step 1 */}
-        <div className="space-y-2">
-          <Label htmlFor="issuer">Issuer</Label>
-          <Input
-            id="issuer"
-            value={form.issuer}
-            onChange={(e) => setForm({ ...form, issuer: e.target.value })}
-            placeholder="Ex: Visa"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="balance">Balance</Label>
-          <NumberInput
-            id="balance"
-            value={form.balance}
-            onValueChange={(value) => setForm({ ...form, balance: value ?? 0 })}
-            thousandSeparator=","
-            prefix="$ "
-            min={0}
-            allowNegative={false}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="creditLimit">Credit Limit</Label>
-          <NumberInput
-            id="creditLimit"
-            value={form.credit_limit}
-            onValueChange={(value) =>
-              setForm({ ...form, credit_limit: value ?? 0 })
-            }
-            thousandSeparator=","
-            prefix="$ "
-            min={0}
-            allowNegative={false}
-          />
-        </div>
-        <div className="space-y-2">
-          <div className="space-y-1">
-            <Label htmlFor="compounded">Compounded</Label>
-            <div className="text-xs text-muted-foreground">
-              On what frequency is the interest compounded? (For credit cards
-              this usually will be monthly)
-            </div>
-          </div>
-          <Tabs
-            defaultValue="monthly"
-            value={form.compounded}
-            onValueChange={(value) =>
-              setForm({
-                ...form,
-                compounded: value as "daily" | "monthly" | "yearly",
-              })
-            }
-          >
-            <TabsList>
-              <TabsTrigger value="daily">Daily</TabsTrigger>
-              <TabsTrigger value="monthly">Monthly</TabsTrigger>
-              <TabsTrigger value="yearly">Yearly</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-
-        {/* step 2 */}
-        <div className="space-y-2">
-          <div className="space-y-1">
-            <Label htmlFor="hasIntroPromotion">
-              Introductory APR Promotion
-            </Label>
-            <div className="text-xs text-muted-foreground">
-              Does your card have a promotional APR (e.g., 0% APR for 12
-              months)? You can skip and update later if unsure.
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="hasIntroPromotion"
-              checked={form.has_intro_promotion}
-              onCheckedChange={(checked) =>
-                setForm({ ...form, has_intro_promotion: checked })
-              }
-            />
-            <Label htmlFor="hasIntroPromotion">Yes, I have a promotion</Label>
-          </div>
-        </div>
-        {form.has_intro_promotion && (
+        {step === 1 && (
           <>
+            {/* Step 1: Basic info */}
             <div className="space-y-2">
-              <Label htmlFor="introApr">Introductory APR (%)</Label>
+              <Label htmlFor="issuer">Issuer</Label>
+              <Input
+                id="issuer"
+                value={form.issuer}
+                onChange={(e) => setForm({ ...form, issuer: e.target.value })}
+                placeholder="Ex: Visa"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="balance">Balance</Label>
               <NumberInput
-                id="introApr"
-                value={form.intro_apr}
+                id="balance"
+                value={form.balance}
                 onValueChange={(value) =>
-                  setForm({ ...form, intro_apr: value ?? 0 })
+                  setForm({ ...form, balance: value ?? 0 })
                 }
+                thousandSeparator=","
+                prefix="$ "
+                min={0}
+                allowNegative={false}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="creditLimit">Credit Limit</Label>
+              <NumberInput
+                id="creditLimit"
+                value={form.credit_limit}
+                onValueChange={(value) =>
+                  setForm({ ...form, credit_limit: value ?? 0 })
+                }
+                thousandSeparator=","
+                prefix="$ "
+                min={0}
+                allowNegative={false}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="space-y-1">
+                <Label htmlFor="compounded">Compounded</Label>
+                <div className="text-xs text-muted-foreground">
+                  On what frequency is the interest compounded? (For credit
+                  cards this usually will be monthly)
+                </div>
+              </div>
+              <Tabs
+                defaultValue="monthly"
+                value={form.compounded}
+                onValueChange={(value) =>
+                  setForm({
+                    ...form,
+                    compounded: value as "daily" | "monthly" | "yearly",
+                  })
+                }
+              >
+                <TabsList>
+                  <TabsTrigger value="daily">Daily</TabsTrigger>
+                  <TabsTrigger value="monthly">Monthly</TabsTrigger>
+                  <TabsTrigger value="yearly">Yearly</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+          </>
+        )}
+        {step === 2 && (
+          <>
+            {/* Step 2: Introductory promotion */}
+            <div className="space-y-2">
+              <div className="space-y-1">
+                <Label htmlFor="hasIntroPromotion">
+                  Introductory APR Promotion
+                </Label>
+                <div className="text-xs text-muted-foreground">
+                  Does your card have a promotional APR (e.g., 0% APR for 12
+                  months)? You can skip and update later if unsure.
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="hasIntroPromotion"
+                  checked={form.has_intro_promotion}
+                  onCheckedChange={(checked) =>
+                    setForm({ ...form, has_intro_promotion: checked })
+                  }
+                />
+                <Label htmlFor="hasIntroPromotion">
+                  Yes, I have a promotion
+                </Label>
+              </div>
+            </div>
+            {form.has_intro_promotion && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="introApr">Introductory APR (%)</Label>
+                  <NumberInput
+                    id="introApr"
+                    value={form.intro_apr}
+                    onValueChange={(value) =>
+                      setForm({ ...form, intro_apr: value ?? 0 })
+                    }
+                    decimalScale={5}
+                    suffix=" %"
+                    allowNegative={false}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="introExpirationDate">
+                    Promotion Expiration Date
+                  </Label>
+                  <Input
+                    id="introExpirationDate"
+                    type="date"
+                    value={form.intro_expiration_date
+                      .toISOString()
+                      .slice(0, 10)}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        intro_expiration_date: new Date(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+              </>
+            )}
+            <div className="space-y-2">
+              <div className="space-y-1">
+                <Label htmlFor="apr">APR (%)</Label>
+                <div className="text-xs text-muted-foreground">
+                  {form.has_intro_promotion
+                    ? "What is the APR for this card after the promotion ends?"
+                    : "What is the APR for this card?"}
+                </div>
+              </div>
+              <NumberInput
+                id="apr"
+                value={form.apr}
+                onValueChange={(value) => setForm({ ...form, apr: value ?? 0 })}
                 decimalScale={5}
                 suffix=" %"
                 allowNegative={false}
               />
             </div>
+          </>
+        )}
+        {step === 3 && (
+          <>
+            {/* Step 3: Balance transfer options */}
+            <div className="space-y-2 flex flex-col">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="canSendBalanceTransfer"
+                  checked={form.can_send_balance_transfer}
+                  onCheckedChange={(checked) =>
+                    setForm({ ...form, can_send_balance_transfer: checked })
+                  }
+                />
+                <Label htmlFor="canSendBalanceTransfer">
+                  Can Send Balance Transfer
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="canReceiveBalanceTransfer"
+                  checked={form.can_recieve_balance_transfer}
+                  onCheckedChange={(checked) =>
+                    setForm({ ...form, can_recieve_balance_transfer: checked })
+                  }
+                />
+                <Label htmlFor="canReceiveBalanceTransfer">
+                  Can Receive Balance Transfer
+                </Label>
+              </div>
+            </div>
             <div className="space-y-2">
-              <Label htmlFor="introExpirationDate">
-                Promotion Expiration Date
+              <Label htmlFor="balanceTransferFee">
+                Balance Transfer Fee (%)
               </Label>
-              <Input
-                id="introExpirationDate"
-                type="date"
-                value={form.intro_expiration_date.toISOString().slice(0, 10)}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    intro_expiration_date: new Date(e.target.value),
-                  })
+              <NumberInput
+                id="balanceTransferFee"
+                value={form.balance_transfer_fee}
+                onValueChange={(value) =>
+                  setForm({ ...form, balance_transfer_fee: value ?? 0 })
                 }
+                decimalScale={2}
+                suffix=" %"
+                allowNegative={false}
               />
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="isBalanceTransferFeeFixed"
+                  checked={form.is_balance_transfer_fee_fixed}
+                  onCheckedChange={(checked) =>
+                    setForm({ ...form, is_balance_transfer_fee_fixed: checked })
+                  }
+                />
+                <Label htmlFor="isBalanceTransferFeeFixed">
+                  Is Balance Transfer Fee Fixed
+                </Label>
+              </div>
             </div>
           </>
         )}
-        <div className="space-y-2">
-          <div className="space-y-1">
-            <Label htmlFor="apr">APR (%)</Label>
-            <div className="text-xs text-muted-foreground">
-              {form.has_intro_promotion
-                ? "What is the APR for this card after the promotion ends?"
-                : "What is the APR for this card?"}
-            </div>
+        {step === 4 && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-medium">
+              Review Your Credit Card Setup
+            </h2>
+            <pre className="bg-gray-100 p-4 rounded">
+              {JSON.stringify(form, null, 2)}
+            </pre>
           </div>
-          <NumberInput
-            id="apr"
-            value={form.apr}
-            onValueChange={(value) => setForm({ ...form, apr: value ?? 0 })}
-            decimalScale={5}
-            suffix=" %"
-            allowNegative={false}
-          />
-        </div>
-
-        {/* step 3: balance transfer */}
-        <div className="space-y-2 flex flex-col">
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="canSendBalanceTransfer"
-              checked={form.can_send_balance_transfer}
-              onCheckedChange={(checked) =>
-                setForm({ ...form, can_send_balance_transfer: checked })
-              }
-            />
-            <Label htmlFor="canSendBalanceTransfer">
-              Can Send Balance Transfer
-            </Label>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="canReceiveBalanceTransfer"
-              checked={form.can_recieve_balance_transfer}
-              onCheckedChange={(checked) =>
-                setForm({ ...form, can_recieve_balance_transfer: checked })
-              }
-            />
-            <Label htmlFor="canReceiveBalanceTransfer">
-              Can Receive Balance Transfer
-            </Label>
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="balanceTransferFee">Balance Transfer Fee (%)</Label>
-          <NumberInput
-            id="balanceTransferFee"
-            value={form.balance_transfer_fee}
-            onValueChange={(value) =>
-              setForm({ ...form, balance_transfer_fee: value ?? 0 })
-            }
-            decimalScale={2}
-            suffix=" %"
-            allowNegative={false}
-          />
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="isBalanceTransferFeeFixed"
-              checked={form.is_balance_transfer_fee_fixed}
-              onCheckedChange={(checked) =>
-                setForm({ ...form, is_balance_transfer_fee_fixed: checked })
-              }
-            />
-            <Label htmlFor="isBalanceTransferFeeFixed">
-              Is Balance Transfer Fee Fixed
-            </Label>
-          </div>
-        </div>
+        )}
       </form>
       <DialogFooter>
-        <DialogClose asChild>
-          <Button variant="outline">Cancel</Button>
-        </DialogClose>
-        <Button type="submit" disabled={!isValid}>
-          Add Card
-        </Button>
+        {step > 1 && (
+          <Button
+            variant="outline"
+            type="button"
+            onClick={() => setStep(step - 1)}
+          >
+            Back
+          </Button>
+        )}
+        {step < 4 && (
+          <Button
+            type="button"
+            onClick={() => setStep(step + 1)}
+            disabled={!isStepValid}
+          >
+            Next
+          </Button>
+        )}
+        {step === 4 && (
+          <Button type="submit" disabled={!isValid}>
+            Submit
+          </Button>
+        )}
       </DialogFooter>
     </>
   );
