@@ -13,12 +13,19 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MainLayout } from "@/layout/main-layout";
 import { RedirectToSignIn, useUser } from "@clerk/clerk-react";
+import { FileText, PlusIcon } from "lucide-react";
 import { useState } from "react";
 import * as Recharts from "recharts";
 import useLocalStorageState from "use-local-storage-state";
@@ -59,6 +66,7 @@ function HomePageContent({ user }: { user: UserResource }) {
   const [isBankModalOpen, setIsBankModalOpen] = useState(false);
   const [isLoanModalOpen, setIsLoanModalOpen] = useState(false);
   const [isCardModalOpen, setIsCardModalOpen] = useState(false);
+  const [isAddLoanModalOpen, setIsAddLoanModalOpen] = useState(false);
 
   const [bankForm, setBankForm] = useState({
     nickname: "",
@@ -93,11 +101,36 @@ function HomePageContent({ user }: { user: UserResource }) {
           <div className="flex items-center justify-between space-x-4">
             <div className="text-2xl font-bold">Welcome, {user.firstName}</div>
 
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button>
+                  <PlusIcon />
+                  Connect
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setIsAddLoanModalOpen(true)}>
+                  <FileText />
+                  Add Loan
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setIsBankModalOpen(true)}>
+                  Connect Bank Account
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setIsLoanModalOpen(true)}>
+                  Connect Student Loan
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setIsCardModalOpen(true)}>
+                  Connect Credit Card
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <AddLoanModal
+              isOpen={isAddLoanModalOpen}
+              onOpenChange={setIsAddLoanModalOpen}
+            />
             {/* Bank Account Modal */}
             <Dialog open={isBankModalOpen} onOpenChange={setIsBankModalOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline">Connect Bank Account</Button>
-              </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Add Bank Account</DialogTitle>
@@ -185,9 +218,6 @@ function HomePageContent({ user }: { user: UserResource }) {
 
             {/* Student Loan Modal */}
             <Dialog open={isLoanModalOpen} onOpenChange={setIsLoanModalOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline">Add Student Loan</Button>
-              </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Add Student Loan</DialogTitle>
@@ -269,9 +299,6 @@ function HomePageContent({ user }: { user: UserResource }) {
 
             {/* Credit Card Modal */}
             <Dialog open={isCardModalOpen} onOpenChange={setIsCardModalOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline">Add Credit Card</Button>
-              </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Add Credit Card</DialogTitle>
@@ -420,6 +447,94 @@ function HomePageContent({ user }: { user: UserResource }) {
         </div>
       </div>
     </MainLayout>
+  );
+}
+
+type CreditCard1 = {
+  id: string;
+  issuer: string;
+  balance: number;
+  apr: number;
+  intro_apr: number;
+  intro_months: number;
+  fallback_apr: number;
+  compounded: "daily" | "monthly" | "yearly";
+  credit_limit: number;
+  can_send_balance_transfer: boolean;
+  can_recieve_balance_transfer: boolean;
+  balance_transfer_fee: number;
+  is_balance_transfer_fee_fixed: boolean;
+};
+
+function CreditCardForm() {
+  return <div>credit card form</div>;
+}
+
+type StudentLoan1 = {
+  id: string;
+  issuer: string;
+  balance: number;
+  apr: number;
+  compounded: "daily" | "monthly" | "yearly";
+  minimumPayment: number;
+};
+function StudentLoanForm() {
+  const [form, setForm] = useState<StudentLoan1>({
+    id: "",
+    issuer: "",
+    balance: 0,
+    apr: 0,
+    compounded: "daily",
+    minimumPayment: 0,
+  });
+  return (
+    <div>
+      <form>
+        <div></div>
+      </form>
+    </div>
+  );
+}
+
+function AddLoanModal({
+  isOpen,
+  onOpenChange,
+}: {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [loanType, setLoanType] = useState<"student-loan" | "credit-card">(
+    "credit-card",
+  );
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Loan</DialogTitle>
+          <DialogDescription>Enter loan details.</DialogDescription>
+        </DialogHeader>
+
+        <Tabs
+          defaultValue="credit-card"
+          value={loanType}
+          onValueChange={(value) =>
+            setLoanType(value as "student-loan" | "credit-card")
+          }
+        >
+          <TabsList>
+            <TabsTrigger value="credit-card">Credit Card</TabsTrigger>
+            <TabsTrigger value="student-loan">Student Loan</TabsTrigger>
+          </TabsList>
+          <TabsContent value="credit-card">
+            <CreditCardForm />
+          </TabsContent>
+          <TabsContent value="student-loan">
+            <StudentLoanForm />
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
   );
 }
 
