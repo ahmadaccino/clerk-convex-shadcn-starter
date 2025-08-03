@@ -27,7 +27,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MainLayout } from "@/layout/main-layout";
 import { RedirectToSignIn, useUser } from "@clerk/clerk-react";
-import { FileText, PlusIcon } from "lucide-react";
+import { FileText, Loader2, PlusIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import * as Recharts from "recharts";
 import useLocalStorageState from "use-local-storage-state";
@@ -36,6 +36,10 @@ import * as React from "react";
 import { Pie, PieChart, Label as ReLabel } from "recharts";
 
 import { ChartConfig, ChartTooltipContent } from "@/components/ui/chart";
+import { useMutation } from "convex/react";
+
+import { toast } from "sonner";
+import { api } from "../../convex/_generated/api";
 
 type UserResource = NonNullable<ReturnType<typeof useUser>["user"]>;
 
@@ -949,16 +953,30 @@ type StudentLoan1 = {
   compounded: "daily" | "monthly" | "yearly";
   minimumPayment: number;
 };
-function StudentLoanForm() {
-  const [form, setForm] = useState<StudentLoan1>({
-    id: "",
-    nickname: "",
-    issuer: "",
-    balance: 0,
-    apr: 0,
-    compounded: "daily",
-    minimumPayment: 0,
-  });
+const defaultStudentLoan: StudentLoan1 = {
+  id: "",
+  nickname: "",
+  issuer: "",
+  balance: 0,
+  apr: 0,
+  compounded: "daily",
+  minimumPayment: 0,
+};
+
+function StudentLoanForm({
+  onOpenChange,
+}: {
+  onOpenChange: (open: boolean) => void;
+}) {
+  const createStudentLoan = useMutation(api.studentLoans.create);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const [form, setForm] = useLocalStorageState<StudentLoan1>(
+    "student-loan-form",
+    {
+      defaultValue: defaultStudentLoan,
+    },
+  );
 
   const isValid = useMemo(() => {
     return (
@@ -969,13 +987,29 @@ function StudentLoanForm() {
       form.apr > 0
     );
   }, [form]);
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    console.log(form);
+    setIsLoading(true);
+
+    const createdId = await createStudentLoan({
+      nickname: form.nickname,
+      issuer: form.issuer,
+      balance: form.balance,
+      apr: form.apr,
+      compounded: form.compounded,
+      minimumPayment: form.minimumPayment,
+    });
+
+    if (createdId) {
+      setForm(defaultStudentLoan);
+      onOpenChange(false);
+      toast.success("Student loan added");
+    }
+    setIsLoading(false);
   };
   return (
     <>
-      <form className="space-y-4 py-4" onSubmit={handleSubmit}>
+      <form className="space-y-4 pt-4" onSubmit={(e) => void handleSubmit(e)}>
         <div className="space-y-2">
           <Label htmlFor="nickname">Nickname</Label>
           <Input
@@ -1060,15 +1094,22 @@ function StudentLoanForm() {
             </TabsList>
           </Tabs>
         </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </DialogClose>
+          <Button type="submit" disabled={!isValid || isLoading}>
+            {isLoading ? (
+              <>
+                <Loader2 className="animate-spin" />
+                Adding...
+              </>
+            ) : (
+              "Add Loan"
+            )}
+          </Button>
+        </DialogFooter>
       </form>
-      <DialogFooter>
-        <DialogClose asChild>
-          <Button variant="outline">Cancel</Button>
-        </DialogClose>
-        <Button type="submit" disabled={!isValid}>
-          Add Loan
-        </Button>
-      </DialogFooter>
     </>
   );
 }
@@ -1106,7 +1147,7 @@ function AddLoanModal({
             <CreditCardForm />
           </TabsContent>
           <TabsContent value="student-loan">
-            <StudentLoanForm />
+            <StudentLoanForm onOpenChange={onOpenChange} />
           </TabsContent>
         </Tabs>
       </DialogContent>
