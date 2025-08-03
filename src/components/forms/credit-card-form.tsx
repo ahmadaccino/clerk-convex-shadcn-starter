@@ -170,7 +170,6 @@ export function CreditCardForm({
     return (
       form.issuer.length > 0 &&
       form.balance > 0 &&
-      form.apr > 0 &&
       form.credit_limit > 0 &&
       (!form.has_intro_promotion || form.intro_expiration_date > new Date())
     );
