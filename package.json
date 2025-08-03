@@ -57,6 +57,7 @@
     "react-day-picker": "^9.8.0",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.60.0",
+    "react-number-format": "^5.4.4",
     "react-plaid-link": "^4.0.1",
     "react-resizable-panels": "^3.0.3",
     "react-router": "^7.7.0",

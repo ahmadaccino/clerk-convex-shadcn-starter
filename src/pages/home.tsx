@@ -1,4 +1,5 @@
 import LoadingSpinner from "@/components/loading-spinner";
+import { NumberInput } from "@/components/number-input";
 import { Button } from "@/components/ui/button";
 import {
   ChartContainer,
@@ -26,7 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MainLayout } from "@/layout/main-layout";
 import { RedirectToSignIn, useUser } from "@clerk/clerk-react";
 import { FileText, PlusIcon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import * as Recharts from "recharts";
 import useLocalStorageState from "use-local-storage-state";
 
@@ -99,7 +100,9 @@ function HomePageContent({ user }: { user: UserResource }) {
       <div className="p-4">
         <div className="container mx-auto max-w-7xl space-y-8">
           <div className="flex items-center justify-between space-x-4">
-            <div className="text-2xl font-bold">Welcome, {user.firstName}</div>
+            <div className="text-2xl font-bold font-serif">
+              Welcome, {user.firstName}
+            </div>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -472,6 +475,7 @@ function CreditCardForm() {
 
 type StudentLoan1 = {
   id: string;
+  nickname: string;
   issuer: string;
   balance: number;
   apr: number;
@@ -481,18 +485,124 @@ type StudentLoan1 = {
 function StudentLoanForm() {
   const [form, setForm] = useState<StudentLoan1>({
     id: "",
+    nickname: "",
     issuer: "",
     balance: 0,
     apr: 0,
     compounded: "daily",
     minimumPayment: 0,
   });
+
+  const isValid = useMemo(() => {
+    return (
+      form.nickname.length > 0 &&
+      form.issuer.length > 0 &&
+      form.balance > 0 &&
+      form.minimumPayment > 0 &&
+      form.apr > 0
+    );
+  }, [form]);
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    console.log(form);
+  };
   return (
-    <div>
-      <form>
-        <div></div>
+    <>
+      <form className="space-y-4 py-4" onSubmit={handleSubmit}>
+        <div className="space-y-2">
+          <Label htmlFor="nickname">Nickname</Label>
+          <Input
+            id="nickname"
+            value={form.nickname}
+            onChange={(e) => setForm({ ...form, nickname: e.target.value })}
+            placeholder="Ex: Nelnet"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="issuer">Student Loan Issuer</Label>
+          <Input
+            id="issuer"
+            value={form.issuer}
+            onChange={(e) => setForm({ ...form, issuer: e.target.value })}
+            placeholder="Ex: Nelnet"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="balance">Balance</Label>
+          <NumberInput
+            id="balance"
+            value={form.balance}
+            onValueChange={(value) => setForm({ ...form, balance: value ?? 0 })}
+            thousandSeparator=","
+            prefix="$ "
+            min={0}
+            allowNegative={false}
+          />
+        </div>
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <Label htmlFor="minimumPayment">Minimum Payment</Label>
+            <div className="text-xs text-muted-foreground">
+              What is the minimum payment you need to make each month?
+            </div>
+          </div>
+          <NumberInput
+            id="minimumPayment"
+            value={form.minimumPayment}
+            onValueChange={(value) =>
+              setForm({ ...form, minimumPayment: value ?? 0 })
+            }
+            thousandSeparator=","
+            prefix="$ "
+            placeholder="Ex: 100"
+            allowNegative={false}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="apr">APR (%)</Label>
+          <NumberInput
+            id="apr"
+            value={form.apr}
+            onValueChange={(value) => setForm({ ...form, apr: value ?? 0 })}
+            decimalScale={5}
+            suffix=" %"
+            allowNegative={false}
+          />
+        </div>
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <Label htmlFor="compounded">Compounded</Label>
+            <div className="text-xs text-muted-foreground">
+              On what frequency is the interest compounded?
+            </div>
+          </div>
+          <Tabs
+            defaultValue="daily"
+            value={form.compounded}
+            onValueChange={(value) =>
+              setForm({
+                ...form,
+                compounded: value as "daily" | "monthly" | "yearly",
+              })
+            }
+          >
+            <TabsList>
+              <TabsTrigger value="daily">Daily</TabsTrigger>
+              <TabsTrigger value="monthly">Monthly</TabsTrigger>
+              <TabsTrigger value="yearly">Yearly</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
       </form>
-    </div>
+      <DialogFooter>
+        <DialogClose asChild>
+          <Button variant="outline">Cancel</Button>
+        </DialogClose>
+        <Button type="submit" disabled={!isValid}>
+          Add Loan
+        </Button>
+      </DialogFooter>
+    </>
   );
 }
 
@@ -504,7 +614,7 @@ function AddLoanModal({
   onOpenChange: (open: boolean) => void;
 }) {
   const [loanType, setLoanType] = useState<"student-loan" | "credit-card">(
-    "credit-card",
+    "student-loan",
   );
 
   return (
@@ -516,7 +626,6 @@ function AddLoanModal({
         </DialogHeader>
 
         <Tabs
-          defaultValue="credit-card"
           value={loanType}
           onValueChange={(value) =>
             setLoanType(value as "student-loan" | "credit-card")
