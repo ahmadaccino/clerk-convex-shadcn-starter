@@ -15,10 +15,9 @@ import { useState } from "react";
 
 import { CreditCardForm } from "@/components/forms/credit-card-form";
 import { StudentLoanForm } from "@/components/forms/student-loan-form";
+import { UserResource } from "@/lib/types";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-
-type UserResource = NonNullable<ReturnType<typeof useUser>["user"]>;
 
 function HomePageContent({ user }: { user: UserResource }) {
   const creditCards = useQuery(api.creditCards.get) ?? [];
