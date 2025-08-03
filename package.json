@@ -50,6 +50,7 @@
     "convex": "^1.23.0",
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.13",
+    "decimal.js": "^10.6.0",
     "embla-carousel-react": "^8.6.0",
     "input-otp": "^1.4.2",
     "lodash-es": "^4.17.21",

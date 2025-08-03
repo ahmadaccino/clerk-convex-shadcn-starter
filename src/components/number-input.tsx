@@ -20,6 +20,7 @@ export interface NumberInputProps
   fixedDecimalScale?: boolean;
   decimalScale?: number;
   disableIncrementorButtons?: boolean;
+  incrementorButtonClassName?: string;
 }
 
 export const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(
@@ -38,6 +39,7 @@ export const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(
       prefix,
       value: controlledValue,
       disableIncrementorButtons = false,
+      incrementorButtonClassName,
       ...props
     },
     ref,
@@ -145,7 +147,10 @@ export const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(
           <div className="flex flex-col">
             <Button
               aria-label="Increase value"
-              className="flex-1 px-2 h-5 rounded-l-none rounded-br-none border-input border-l-0 border-b-[0.5px] focus-visible:relative"
+              className={cn(
+                "flex-1 px-2 h-5 rounded-l-none rounded-br-none border-input border-l-0 border-b-[0.5px] focus-visible:relative",
+                incrementorButtonClassName,
+              )}
               variant="outline"
               onClick={handleIncrement}
               disabled={value === max}
@@ -154,7 +159,10 @@ export const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(
             </Button>
             <Button
               aria-label="Decrease value"
-              className="flex-1 px-2 h-5 rounded-l-none rounded-tr-none border-input border-l-0 border-t-[0.5px] focus-visible:relative"
+              className={cn(
+                "flex-1 px-2 h-5 rounded-l-none rounded-tr-none border-input border-l-0 border-t-[0.5px] focus-visible:relative",
+                incrementorButtonClassName,
+              )}
               variant="outline"
               onClick={handleDecrement}
               disabled={value === min}
