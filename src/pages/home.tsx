@@ -32,6 +32,11 @@ import { useMemo, useState } from "react";
 import * as Recharts from "recharts";
 import useLocalStorageState from "use-local-storage-state";
 
+import * as React from "react";
+import { Pie, PieChart, Label as ReLabel } from "recharts";
+
+import { ChartConfig, ChartTooltipContent } from "@/components/ui/chart";
+
 type UserResource = NonNullable<ReturnType<typeof useUser>["user"]>;
 
 // Define finance types
@@ -454,6 +459,86 @@ function HomePageContent({ user }: { user: UserResource }) {
   );
 }
 
+export const description = "A donut chart with text";
+
+function ChartPieDonutText({
+  balance,
+  available,
+}: {
+  balance: number;
+  available: number;
+}) {
+  const chartData = React.useMemo(
+    () => [
+      { name: "Borrowed", value: balance, fill: "var(--color-borrowed)" },
+      { name: "Available", value: available, fill: "var(--color-available)" },
+    ],
+    [balance, available],
+  );
+
+  const total = React.useMemo(() => balance + available, [balance, available]);
+
+  const chartConfig = React.useMemo(
+    () =>
+      ({
+        borrowed: { label: "Borrowed", color: "var(--chart-2)" },
+        available: { label: "Available", color: "var(--chart-5)" },
+      }) satisfies ChartConfig,
+    [],
+  );
+
+  return (
+    <ChartContainer
+      config={chartConfig}
+      className="mx-auto aspect-square max-h-[250px]"
+    >
+      <PieChart>
+        <ChartTooltip
+          cursor={false}
+          content={<ChartTooltipContent hideLabel />}
+        />
+        <Pie
+          data={chartData}
+          dataKey="value"
+          nameKey="name"
+          innerRadius={60}
+          strokeWidth={5}
+        >
+          <ReLabel
+            content={({ viewBox }) => {
+              if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                return (
+                  <text
+                    x={viewBox.cx}
+                    y={viewBox.cy}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                  >
+                    <tspan
+                      x={viewBox.cx}
+                      y={viewBox.cy}
+                      className="fill-foreground text-3xl font-bold"
+                    >
+                      {total.toLocaleString()}
+                    </tspan>
+                    <tspan
+                      x={viewBox.cx}
+                      y={(viewBox.cy || 0) + 24}
+                      className="fill-muted-foreground"
+                    >
+                      Total Limit
+                    </tspan>
+                  </text>
+                );
+              }
+            }}
+          />
+        </Pie>
+      </PieChart>
+    </ChartContainer>
+  );
+}
+
 type CreditCard1 = {
   id: string;
   issuer: string;
@@ -472,22 +557,27 @@ type CreditCard1 = {
 };
 
 function CreditCardForm() {
-  const [form, setForm] = useState<CreditCard1>({
-    id: "",
-    issuer: "",
-    balance: 0,
-    apr: 0,
-    has_intro_promotion: false,
-    intro_apr: 0,
-    intro_expiration_date: new Date(),
-    intro_months: 0, // Deprecated
-    compounded: "daily",
-    credit_limit: 0,
-    can_send_balance_transfer: false,
-    can_recieve_balance_transfer: false,
-    balance_transfer_fee: 0,
-    is_balance_transfer_fee_fixed: false,
-  });
+  const [form, setForm] = useLocalStorageState<CreditCard1>(
+    "add-credit-card-form",
+    {
+      defaultValue: {
+        id: "",
+        issuer: "",
+        balance: 0,
+        apr: 0,
+        has_intro_promotion: false,
+        intro_apr: 0,
+        intro_expiration_date: new Date(),
+        intro_months: 0, // Deprecated
+        compounded: "monthly",
+        credit_limit: 0,
+        can_send_balance_transfer: false,
+        can_recieve_balance_transfer: false,
+        balance_transfer_fee: 0,
+        is_balance_transfer_fee_fixed: false,
+      },
+    },
+  );
   const [step, setStep] = useState(1);
   const isStepValid = useMemo(() => {
     switch (step) {
@@ -533,7 +623,7 @@ function CreditCardForm() {
                 id="issuer"
                 value={form.issuer}
                 onChange={(e) => setForm({ ...form, issuer: e.target.value })}
-                placeholder="Ex: Visa"
+                placeholder="Ex: Chase, Citi, etc."
               />
             </div>
             <div className="space-y-2">
@@ -701,43 +791,123 @@ function CreditCardForm() {
                 </Label>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="balanceTransferFee">
-                Balance Transfer Fee (%)
-              </Label>
-              <NumberInput
-                id="balanceTransferFee"
-                value={form.balance_transfer_fee}
-                onValueChange={(value) =>
-                  setForm({ ...form, balance_transfer_fee: value ?? 0 })
-                }
-                decimalScale={2}
-                suffix=" %"
-                allowNegative={false}
-              />
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="isBalanceTransferFeeFixed"
-                  checked={form.is_balance_transfer_fee_fixed}
-                  onCheckedChange={(checked) =>
-                    setForm({ ...form, is_balance_transfer_fee_fixed: checked })
-                  }
-                />
-                <Label htmlFor="isBalanceTransferFeeFixed">
-                  Is Balance Transfer Fee Fixed
+            {form.can_send_balance_transfer && (
+              <div className="space-y-2">
+                <Label htmlFor="balanceTransferFee">
+                  Balance Transfer Fee (%)
                 </Label>
+                <NumberInput
+                  id="balanceTransferFee"
+                  value={form.balance_transfer_fee}
+                  onValueChange={(value) =>
+                    setForm({ ...form, balance_transfer_fee: value ?? 0 })
+                  }
+                  decimalScale={2}
+                  suffix=" %"
+                  allowNegative={false}
+                />
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="isBalanceTransferFeeFixed"
+                    checked={form.is_balance_transfer_fee_fixed}
+                    onCheckedChange={(checked) =>
+                      setForm({
+                        ...form,
+                        is_balance_transfer_fee_fixed: checked,
+                      })
+                    }
+                  />
+                  <Label htmlFor="isBalanceTransferFeeFixed">
+                    Is Balance Transfer Fee Fixed
+                  </Label>
+                </div>
               </div>
-            </div>
+            )}
           </>
         )}
         {step === 4 && (
           <div className="space-y-4">
-            <h2 className="text-lg font-medium">
-              Review Your Credit Card Setup
-            </h2>
-            <pre className="bg-gray-100 p-4 rounded">
-              {JSON.stringify(form, null, 2)}
-            </pre>
+            <h2 className="text-xl font-bold">Review Your Credit Card Setup</h2>
+            <div className="space-y-2">
+              <p>
+                <strong>Issuer:</strong> {form.issuer}
+              </p>
+              <p>
+                <strong>Balance:</strong> ${form.balance.toLocaleString()}
+              </p>
+              <p>
+                <strong>Credit Limit:</strong> $
+                {form.credit_limit.toLocaleString()}
+              </p>
+              <p>
+                <strong>Available Credit:</strong> $
+                {(form.credit_limit - form.balance).toLocaleString()}
+              </p>
+              <p>
+                <strong>APR:</strong> {form.apr}%
+              </p>
+              {form.has_intro_promotion && (
+                <p>
+                  <strong>Intro APR:</strong> {form.intro_apr}% until{" "}
+                  {form.intro_expiration_date.toLocaleDateString()}
+                </p>
+              )}
+              {form.can_send_balance_transfer && (
+                <p>Can send balance transfers</p>
+              )}
+              {form.can_recieve_balance_transfer && (
+                <p>Can receive balance transfers</p>
+              )}
+              {form.can_send_balance_transfer && (
+                <p>
+                  <strong>Transfer Fee:</strong> {form.balance_transfer_fee}%{" "}
+                  {form.is_balance_transfer_fee_fixed
+                    ? "(fixed)"
+                    : "(variable)"}
+                </p>
+              )}
+            </div>
+            <div className="hidden">
+              <ChartContainer
+                id="card-balance-available"
+                config={{
+                  sborrowed: {
+                    label: "Borrowed",
+                    theme: { light: "red", dark: "red" },
+                  },
+                  savailable: {
+                    label: "Available",
+                    theme: { light: "green", dark: "green" },
+                  },
+                }}
+              >
+                <Recharts.PieChart width={200} height={400}>
+                  <Recharts.Pie
+                    data={[
+                      { name: "Borrowed", value: form.balance },
+                      {
+                        name: "Available",
+                        value: form.credit_limit - form.balance,
+                      },
+                    ]}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={80}
+                    innerRadius={40}
+                  />
+                  <ChartTooltip />
+                  <ChartLegend />
+                </Recharts.PieChart>
+              </ChartContainer>
+            </div>
+            <div className="">
+              <ChartPieDonutText
+                balance={form.balance}
+                available={Math.max(0, form.credit_limit - form.balance)}
+              />
+            </div>
           </div>
         )}
       </form>
