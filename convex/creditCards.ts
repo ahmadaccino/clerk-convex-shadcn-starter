@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 
 const compounded = v.union(
   v.literal("daily"),
@@ -24,4 +24,8 @@ export const create = mutation({
     is_balance_transfer_fee_fixed: v.boolean(),
   },
   handler: async (ctx, args) => await ctx.db.insert("creditCards", args),
+});
+
+export const get = query({
+  handler: async (ctx) => await ctx.db.query("creditCards").collect(),
 });
