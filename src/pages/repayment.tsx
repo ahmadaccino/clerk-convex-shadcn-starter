@@ -1,6 +1,13 @@
 import { LoadingSpinner } from "@/components/loading-spinner";
 import { NumberInput } from "@/components/number-input";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
@@ -10,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { MainLayout } from "@/layout/main-layout";
 import { generateAvalanchePlan } from "@/lib/plans/avalanchePlan";
 import { SetState, UserResource } from "@/lib/types";
@@ -19,14 +27,30 @@ import { useQuery } from "convex/react";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
+  CreditCardIcon,
   MountainSnowIcon,
+  PieChartIcon,
+  PiggyBankIcon,
   SnowflakeIcon,
   SparklesIcon,
+  TrendingDownIcon,
+  WalletIcon,
 } from "lucide-react";
 import { useId, useMemo, useState } from "react";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { api } from "../../convex/_generated/api";
 
 enum DebtPayoffStrategy {
+  Cascade = "cascade",
   Avalanche = "avalanche",
   Snowball = "snowball",
 }
@@ -291,10 +315,102 @@ function RepaymentPlanDisplay({
     );
   }, [studentLoans, creditCards, repaymentAmount, preserveCreditScore]);
 
+  console.log("input:", {
+    studentLoans,
+    creditCards,
+    repaymentAmount,
+    preserveCreditScore,
+  });
+  console.log("output:", plan);
+
+  // Aggregate monthly insights for charts & summaries
+  const chartData = useMemo(() => {
+    let totalStartingBalance = 0;
+    const balancesById: Record<string, number> = {};
+
+    [...studentLoans, ...creditCards].forEach((d) => {
+      balancesById[d._id] = d.balance;
+      totalStartingBalance += d.balance;
+    });
+
+    const data = plan.monthly_schedule.map((m) => {
+      // Sum remaining balances for this month
+      const totalBalance = m.remainingBalances.reduce(
+        (s, b) => s + b.balance,
+        0,
+      );
+      const monthPayment = m.payments.reduce((s, p) => s + p.amount, 0);
+
+      // Approximate utilization and credit health
+      const ccBalances = m.remainingBalances.filter((b) =>
+        creditCards.some((c) => c._id === b.debtId),
+      );
+      const totalCcBalance = ccBalances.reduce((s, b) => s + b.balance, 0);
+      const totalCcLimit =
+        creditCards.reduce((s, c) => s + c.credit_limit, 0) || 1;
+      const utilization = totalCcBalance / totalCcLimit; // 0..1
+
+      return {
+        month: m.month,
+        totalBalance,
+        totalDebtRatio:
+          totalStartingBalance === 0 ? 0 : totalBalance / totalStartingBalance,
+        payment: monthPayment,
+        utilization,
+      };
+    });
+
+    // Interest over time: approximate from deltas of total balances + payments
+    const interestData = data.map((d, idx) => {
+      if (idx === 0)
+        return {
+          month: d.month,
+          interest: Math.max(
+            0,
+            totalStartingBalance + d.payment - d.totalBalance,
+          ),
+        };
+      const prev = data[idx - 1];
+      const delta = prev.totalBalance - d.totalBalance; // principal + interest - payments
+      const interest = Math.max(0, d.payment - delta);
+      return { month: d.month, interest };
+    });
+
+    return { data, interestData };
+  }, [plan, studentLoans, creditCards]);
+
+  // Map debt metadata for labels/icons
+  const debtMeta: Record<
+    string,
+    { type: "loan" | "credit_card"; name: string; issuer?: string }
+  > = useMemo(() => {
+    const meta: Record<string, any> = {};
+    studentLoans.forEach(
+      (l) =>
+        (meta[l._id] = {
+          type: "loan",
+          name: l.nickname ?? "Student Loan",
+          issuer: l.issuer,
+        }),
+    );
+    creditCards.forEach(
+      (c) =>
+        (meta[c._id] = {
+          type: "credit_card",
+          name: c.issuer,
+          issuer: c.issuer,
+        }),
+    );
+    return meta;
+  }, [studentLoans, creditCards]);
+
+  const [selectedMonthIndex, setSelectedMonthIndex] = useState(0);
+  const selectedMonth = plan.monthlyPayments[selectedMonthIndex];
+
   console.log(plan);
 
   return (
-    <div className="flex-1">
+    <div className="flex-1 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Repayment Plan</h1>
         <div className="flex items-center gap-2">
@@ -354,6 +470,313 @@ function RepaymentPlanDisplay({
           </div>
         </div>
       </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Months to Payoff
+            </CardTitle>
+            <TrendingDownIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{plan.totalMonthsToPayoff}</div>
+            <p className="text-xs text-muted-foreground">Projected duration</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Total Interest Paid
+            </CardTitle>
+            <PiggyBankIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              ${plan.totalInterestPaid.toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground">Cumulative interest</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Max Utilization
+            </CardTitle>
+            <CreditCardIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {Math.round((plan.creditScoreImpact?.maxUtilization ?? 0) * 100)}%
+            </div>
+            <p className="text-xs text-muted-foreground">Across cards</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Avg Utilization
+            </CardTitle>
+            <PieChartIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {Math.round(
+                (plan.creditScoreImpact?.averageUtilization ?? 0) * 100,
+              )}
+              %
+            </div>
+            <p className="text-xs text-muted-foreground">Credit health</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card className="col-span-1 lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-sm">
+              Total Debt Ratio Over Time
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer config={{}}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData.data}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis
+                    tickFormatter={(v) => `${Math.round(v * 100)}%`}
+                    domain={[0, 1]}
+                  />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Line
+                    type="monotone"
+                    dataKey="totalDebtRatio"
+                    stroke="#2563eb"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">
+              Monthly Interest Estimated
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer config={{}}>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart
+                  data={chartData.interestData}
+                  style={{ height: "100%", width: "100%" }}
+                >
+                  <defs>
+                    <linearGradient
+                      id="interestFill"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop offset="5%" stopColor="#16a34a" stopOpacity={0.5} />
+                      <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis tickFormatter={(v) => `$${Math.round(v)}`} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Area
+                    type="monotone"
+                    dataKey="interest"
+                    stroke="#16a34a"
+                    fill="url(#interestFill)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Utilization Over Time</CardTitle>
+          </CardHeader>
+          <CardContent className="h-64">
+            <ChartContainer config={{}}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData.data}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis
+                    tickFormatter={(v) => `${Math.round(v * 100)}%`}
+                    domain={[0, 1]}
+                  />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Line
+                    type="monotone"
+                    dataKey="utilization"
+                    stroke="#f59e0b"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-sm">Payments Per Month</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {/* Month selector */}
+            <div className="flex items-center justify-between pb-3">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setSelectedMonthIndex((i) => Math.max(0, i - 1))
+                  }
+                >
+                  <ChevronLeftIcon className="h-4 w-4" />
+                </Button>
+                <div className="text-sm">Month {selectedMonth?.month ?? 0}</div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setSelectedMonthIndex((i) =>
+                      Math.min(plan.monthlyPayments.length - 1, i + 1),
+                    )
+                  }
+                >
+                  <ChevronRightIcon className="h-4 w-4" />
+                </Button>
+              </div>
+              <Badge variant="secondary">
+                $
+                {(
+                  selectedMonth?.payments.reduce((s, p) => s + p.amount, 0) ?? 0
+                ).toLocaleString()}{" "}
+                total
+              </Badge>
+            </div>
+            <Separator />
+            <div className="divide-y">
+              {selectedMonth?.payments.map((p) => {
+                const meta = debtMeta[p.debtId];
+                const Icon =
+                  meta?.type === "credit_card" ? CreditCardIcon : WalletIcon;
+                return (
+                  <div
+                    key={`${selectedMonth.month}-${p.debtId}-${p.isMinimum ? "min" : "extra"}`}
+                    className="flex items-center justify-between py-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`p-2 rounded-md ${meta?.type === "credit_card" ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"}`}
+                      >
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <div className="flex flex-col">
+                        <div className="font-medium">
+                          {meta?.name ?? p.debtId}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {p.isMinimum ? "Minimum" : "Extra"} payment
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right font-semibold">
+                      ${p.amount.toLocaleString()}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {selectedMonth?.balanceTransfers &&
+              selectedMonth.balanceTransfers.length > 0 && (
+                <>
+                  <Separator className="my-3" />
+                  <div className="text-sm font-medium mb-2">
+                    Balance Transfers
+                  </div>
+                  <div className="space-y-2">
+                    {selectedMonth.balanceTransfers.map((t, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between text-sm"
+                      >
+                        <div>
+                          Transfer ${t.amount.toLocaleString()} from{" "}
+                          <Badge variant="outline">
+                            {debtMeta[t.fromDebtId]?.name ?? t.fromDebtId}
+                          </Badge>{" "}
+                          to{" "}
+                          <Badge variant="outline">
+                            {debtMeta[t.toDebtId]?.name ?? t.toDebtId}
+                          </Badge>
+                        </div>
+                        <div className="text-muted-foreground">
+                          Fee: ${t.fee.toLocaleString()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Remaining balances by debt for current month */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">
+            Remaining Balances (Month {selectedMonth?.month ?? 0})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {selectedMonth?.remainingBalances.map((b) => {
+            const meta = debtMeta[b.debtId];
+            const Icon =
+              meta?.type === "credit_card" ? CreditCardIcon : WalletIcon;
+            return (
+              <div
+                key={b.debtId}
+                className="flex items-center justify-between rounded-lg border p-3"
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`p-2 rounded-md ${meta?.type === "credit_card" ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"}`}
+                  >
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div className="flex flex-col">
+                    <div className="font-medium">{meta?.name ?? b.debtId}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {meta?.type === "credit_card" ? "Credit Card" : "Loan"}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right font-semibold">
+                  ${b.balance.toLocaleString()}
+                </div>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
     </div>
   );
 }

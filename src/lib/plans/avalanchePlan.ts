@@ -1,15 +1,85 @@
+/* eslint-disable max-lines */
 import Decimal from "decimal.js";
 
-function calculateEffectiveRate(
-  nominalRate: number,
-  compoundingPerYear: number,
-): number {
-  return Math.pow(1 + nominalRate / compoundingPerYear, compoundingPerYear) - 1;
+type Compounded = "daily" | "monthly" | "yearly";
+
+interface StudentLoanIn {
+  _id: string;
+  _creationTime: number;
+  compounded: Compounded;
+  nickname: string;
+  issuer: string;
+  balance: number;
+  apr: number; // percent, e.g. 12 means 12%
+  minimumPayment: number;
 }
 
-function getCompoundingFrequency(
-  compounded: "daily" | "monthly" | "yearly",
-): number {
+interface CreditCardIn {
+  _id: string;
+  _creationTime: number;
+  compounded: Compounded;
+  nickname: string;
+  issuer: string;
+  balance: number;
+  apr: number; // percent
+  has_intro_promotion: boolean;
+  intro_apr: number; // percent
+  intro_expiration_timestamp: number; // ms
+  credit_limit: number;
+  can_send_balance_transfer: boolean;
+  can_recieve_balance_transfer: boolean;
+  balance_transfer_fee: number; // percent if is_balance_transfer_fee_fixed=true; else fixed dollars
+  is_balance_transfer_fee_fixed: boolean;
+}
+
+interface InitialTransfer {
+  from: string;
+  to: string;
+  amount: number;
+  fee: number;
+}
+interface AccountBalances {
+  [accountId: string]: number;
+}
+interface MonthlyScheduleEntry {
+  month: number;
+  balance_start: AccountBalances;
+  interest: AccountBalances;
+  payments: AccountBalances;
+  balance_end: AccountBalances;
+}
+
+interface DebtRepaymentPlan {
+  initial_transfers: InitialTransfer[];
+  monthly_schedule: MonthlyScheduleEntry[];
+  months_to_payoff: number;
+  total_interest_paid: number;
+}
+
+type DebtType = "loan" | "card";
+
+interface Debt {
+  id: string;
+  type: DebtType;
+  compounded: Compounded;
+  balance: Decimal;
+  aprAnnualPct: Decimal; // input APR percent for baseline
+  // credit-card extras
+  hasIntro?: boolean;
+  introAprPct?: Decimal;
+  introExpTs?: number;
+  creditLimit?: Decimal;
+  // operational
+  minimumPayment: Decimal; // for cards we’ll compute 1% or $25 min equivalent
+  issuer: string;
+  nickname: string;
+}
+
+function pctToDecimal(pct: number): Decimal {
+  return new Decimal(pct).div(100);
+}
+
+function getCompoundingFrequency(compounded: Compounded): number {
   switch (compounded) {
     case "daily":
       return 365;
@@ -20,550 +90,446 @@ function getCompoundingFrequency(
   }
 }
 
-function calculateMonthlyInterest(
-  balance: string,
-  apr: string,
-  compounded: "daily" | "monthly" | "yearly",
-  daysInCycle: number = 30,
-  isLeapYear: boolean = false,
-): string {
-  const principal = new Decimal(balance);
-  const annualRate = new Decimal(apr).div(100);
-
-  if (compounded === "daily") {
-    const daysInYear = isLeapYear ? 366 : 365;
-    const dailyRate = annualRate.div(daysInYear);
-    return principal.mul(dailyRate).mul(daysInCycle).toFixed(2);
-  } else if (compounded === "monthly") {
-    const monthlyRate = annualRate.div(12);
-    return principal.mul(monthlyRate).toFixed(2);
-  } else {
-    // Yearly compounding approximated monthly
-    const monthlyRate = annualRate.div(12);
-    return principal.mul(monthlyRate).toFixed(2);
-  }
-}
-
-interface BalanceTransferOption {
-  fromCardId: string;
-  toCardId: string;
-  transferAmount: number;
-  transferFee: number;
-  currentAPR: number;
-  newAPR: number;
-  promotionalPeriodMonths?: number;
-}
-
-function calculateTransferBenefit(
-  option: BalanceTransferOption,
-  monthlyPayment: number,
-): number {
-  const {
-    transferAmount,
-    transferFee,
-    currentAPR,
-    newAPR,
-    promotionalPeriodMonths,
-  } = option;
-
-  // Calculate payoff timeline with current APR
-  const currentMonthsToPayoff = calculatePayoffTime(
-    transferAmount,
-    currentAPR,
-    monthlyPayment,
-  );
-
-  // Calculate interest savings during promotional period
-  let interestSavings = 0;
-  const promotionalMonths = promotionalPeriodMonths || currentMonthsToPayoff;
-  const monthsToCalculate = Math.min(promotionalMonths, currentMonthsToPayoff);
-
-  for (let month = 1; month <= monthsToCalculate; month++) {
-    const remainingBalance = calculateRemainingBalance(
-      transferAmount,
-      currentAPR,
-      monthlyPayment,
-      month,
-    );
-    const monthlySavings = (remainingBalance * (currentAPR - newAPR)) / 12;
-    interestSavings += monthlySavings;
-  }
-
-  return interestSavings - transferFee;
-}
-
-function optimizeBalanceTransfers(
-  creditCards: Array<{
-    _id: string;
-    balance: number;
-    apr: number;
-    intro_apr: number;
-    intro_expiration_timestamp: number;
-    has_intro_promotion: boolean;
-    credit_limit: number;
-    can_send_balance_transfer: boolean;
-    can_recieve_balance_transfer: boolean;
-    balance_transfer_fee: number;
-    is_balance_transfer_fee_fixed: boolean;
-  }>,
-  monthlyPayment: number,
-): BalanceTransferOption[] {
-  const transfers: BalanceTransferOption[] = [];
-
-  // Sort cards by APR for transfer prioritization
-  const sourceCards = creditCards
-    .filter((card) => card.can_send_balance_transfer && card.balance > 0)
-    .sort((a, b) => b.apr - a.apr); // Highest APR first
-
-  const targetCards = creditCards
-    .filter((card) => card.can_recieve_balance_transfer)
-    .sort((a, b) => {
-      const aEffectiveRate = a.has_intro_promotion ? a.intro_apr : a.apr;
-      const bEffectiveRate = b.has_intro_promotion ? b.intro_apr : b.apr;
-      return aEffectiveRate - bEffectiveRate; // Lowest APR first
-    });
-
-  for (const sourceCard of sourceCards) {
-    for (const targetCard of targetCards) {
-      if (sourceCard._id === targetCard._id) continue;
-
-      const availableCredit = targetCard.credit_limit - targetCard.balance;
-      const maxTransfer = Math.min(sourceCard.balance, availableCredit);
-
-      if (maxTransfer <= 0) continue;
-
-      const transferFee = targetCard.is_balance_transfer_fee_fixed
-        ? targetCard.balance_transfer_fee
-        : maxTransfer * (targetCard.balance_transfer_fee / 100);
-
-      const option: BalanceTransferOption = {
-        fromCardId: sourceCard._id,
-        toCardId: targetCard._id,
-        transferAmount: maxTransfer,
-        transferFee,
-        currentAPR: sourceCard.apr,
-        newAPR: targetCard.has_intro_promotion
-          ? targetCard.intro_apr
-          : targetCard.apr,
-        promotionalPeriodMonths: targetCard.has_intro_promotion
-          ? Math.ceil(
-              (targetCard.intro_expiration_timestamp - Date.now()) /
-                (1000 * 60 * 60 * 24 * 30),
-            )
-          : undefined,
-      };
-
-      const benefit = calculateTransferBenefit(option, monthlyPayment);
-      if (benefit > 0) {
-        transfers.push(option);
-      }
+function monthlyRateForDebt(d: Debt, nowTs: number): Decimal {
+  // Determine effective APR for this month (intro if applicable)
+  let aprPct = d.aprAnnualPct;
+  if (d.type === "card" && d.hasIntro && typeof d.introExpTs === "number") {
+    if (nowTs <= (d.introExpTs ?? 0)) {
+      aprPct = d.introAprPct ?? aprPct;
     }
   }
-
-  return transfers.sort(
-    (a, b) =>
-      calculateTransferBenefit(b, monthlyPayment) -
-      calculateTransferBenefit(a, monthlyPayment),
-  );
-}
-
-function calculateUtilizationRatio(
-  balance: number,
-  creditLimit: number,
-): number {
-  return balance / creditLimit;
-}
-
-function preserveCreditScore(
-  creditCards: Array<{ _id: string; balance: number; credit_limit: number }>,
-  maxUtilizationPerCard: number = 0.3,
-  maxOverallUtilization: number = 0.3,
-): boolean {
-  const totalBalance = creditCards.reduce((sum, card) => sum + card.balance, 0);
-  const totalLimit = creditCards.reduce(
-    (sum, card) => sum + card.credit_limit,
-    0,
-  );
-  const overallUtilization = totalBalance / totalLimit;
-
-  if (overallUtilization > maxOverallUtilization) return false;
-
-  return creditCards.every(
-    (card) =>
-      calculateUtilizationRatio(card.balance, card.credit_limit) <=
-      maxUtilizationPerCard,
-  );
-}
-
-function adjustPaymentsForCreditHealth(
-  payments: Map<string, number>,
-  creditCards: Array<{ _id: string; balance: number; credit_limit: number }>,
-  preserveCreditScore: boolean,
-): Map<string, number> {
-  if (!preserveCreditScore) return payments;
-
-  const adjustedPayments = new Map(payments);
-  const utilizationLimit = 0.3;
-
-  for (const card of creditCards) {
-    const proposedPayment = adjustedPayments.get(card._id) || 0;
-    const newBalance = card.balance - proposedPayment;
-    const newUtilization = newBalance / card.credit_limit;
-
-    if (newUtilization > utilizationLimit) {
-      const maxAllowedBalance = card.credit_limit * utilizationLimit;
-      const maxPayment = card.balance - maxAllowedBalance;
-      adjustedPayments.set(card._id, Math.max(0, maxPayment));
-    }
+  const apr = aprPct; // already decimal, e.g. 0.12
+  if (d.compounded === "daily") {
+    // Convert nominal APR to effective monthly via daily comp
+    // EIR_month = (1 + APR/365)^(days_in_cycle) - 1; we’ll use 30-day cycle
+    const daily = apr.div(365);
+    return Decimal.pow(Decimal.add(1, daily), 30).minus(1);
   }
-
-  return adjustedPayments;
+  if (d.compounded === "monthly" || d.compounded === "yearly") {
+    // Use nominal APR / 12 as monthly nominal approximation
+    return apr.div(12);
+  }
+  return apr.div(12);
 }
 
-function validateInputs(
-  studentLoans: Array<{ balance: number; apr: number; minimumPayment: number }>,
-  creditCards: Array<{
-    _id: string;
-    balance: number;
-    apr: number;
-    credit_limit: number;
-  }>,
+function estimateMonthlyInterest(d: Debt, nowTs: number): Decimal {
+  if (d.balance.lte(0)) return new Decimal(0);
+  const mr = monthlyRateForDebt(d, nowTs);
+  return d.balance.mul(mr);
+}
+
+function clampToCents(x: Decimal): Decimal {
+  // round to 2 decimals (bankers care about cents)
+  return x.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+}
+
+function validateInputsStrict(
+  studentLoans: StudentLoanIn[],
+  creditCards: CreditCardIn[],
   monthlyRepaymentAmount: number,
-): void {
-  // Validate student loans
-  for (const loan of studentLoans) {
-    if (loan.balance < 0)
-      throw new Error(`Invalid loan balance: ${loan.balance}`);
-    if (loan.apr < 0 || loan.apr > 1)
-      throw new Error(`Invalid loan APR: ${loan.apr}`);
-    if (loan.minimumPayment < 0)
-      throw new Error(`Invalid minimum payment: ${loan.minimumPayment}`);
+) {
+  if (!Array.isArray(studentLoans) || !Array.isArray(creditCards)) {
+    throw new Error("Invalid inputs.");
   }
-
-  // Validate credit cards
-  for (const card of creditCards) {
-    if (card.balance < 0)
-      throw new Error(`Invalid card balance: ${card.balance}`);
-    if (card.balance > card.credit_limit)
-      throw new Error(`Balance exceeds credit limit for card ${card._id}`);
-    if (card.apr < 0 || card.apr > 1)
-      throw new Error(`Invalid card APR: ${card.apr}`);
-    if (card.credit_limit <= 0)
-      throw new Error(`Invalid credit limit: ${card.credit_limit}`);
+  const m = new Decimal(monthlyRepaymentAmount);
+  if (!m.isFinite() || m.lte(0)) {
+    throw new Error("monthlyRepaymentAmount must be > 0");
   }
+  for (const l of studentLoans) {
+    if (l.balance < 0) throw new Error(`Loan ${l._id} negative balance`);
+    if (l.minimumPayment < 0)
+      throw new Error(`Loan ${l._id} negative minimum payment`);
+    if (l.apr < 0) throw new Error(`Loan ${l._id} negative APR`);
+  }
+  for (const c of creditCards) {
+    if (c.balance < 0) throw new Error(`Card ${c._id} negative balance`);
+    if (c.credit_limit <= 0)
+      throw new Error(`Card ${c._id} non-positive credit limit`);
+    if (c.apr < 0) throw new Error(`Card ${c._id} negative APR`);
+    if (c.has_intro_promotion) {
+      if (c.intro_apr < 0) throw new Error(`Card ${c._id} negative intro APR`);
+    }
+  }
+}
 
-  // Validate monthly repayment
-  if (monthlyRepaymentAmount <= 0)
-    throw new Error(
-      `Invalid monthly repayment amount: ${monthlyRepaymentAmount}`,
+function computeCardMinimum(balance: Decimal): Decimal {
+  // Typical: greater of 1% balance or $25 (capped at full balance)
+  const onePct = balance.mul(0.01);
+  const floor = new Decimal(25);
+  return Decimal.min(balance, Decimal.max(onePct, floor));
+}
+
+function deepCopyBalances(debts: Debt[]): Record<string, number> {
+  const res: Record<string, number> = {};
+  for (const d of debts) res[d.id] = clampToCents(d.balance).toNumber();
+  return res;
+}
+
+function totalBalance(debts: Debt[]): Decimal {
+  return debts.reduce((s, d) => s.add(d.balance), new Decimal(0));
+}
+
+function sortByMonthlyInterestDesc(debts: Debt[], nowTs: number): Debt[] {
+  return debts
+    .slice()
+    .sort((a, b) =>
+      estimateMonthlyInterest(b, nowTs).cmp(estimateMonthlyInterest(a, nowTs)),
     );
 }
 
-function calculatePayoffTime(
-  balance: number,
-  apr: number,
-  monthlyPayment: number,
-): number {
-  if (monthlyPayment <= (balance * apr) / 12) {
-    return Infinity; // Payment too small to make progress
+// Balance transfer engine: propose initial transfers only, maximizing net benefit with constraints.
+// Strategy: greedy by benefit per dollar transferred.
+function computeInitialTransfers(
+  cards: Debt[],
+  nowTs: number,
+): InitialTransfer[] {
+  // Extract senders (can_send) and receivers (can_receive) from Debt extras (we carried through on construction).
+  // We must track available headroom on receivers and balances on senders.
+  type CardX = Debt & {
+    canSend: boolean;
+    canReceive: boolean;
+    balanceTransferFee: Decimal; // if fixed, literal dollars, else percent
+    isFeePercent: boolean;
+  };
+
+  const senders: CardX[] = [];
+  const receivers: CardX[] = [];
+  for (const d of cards) {
+    const cx = d as any as CardX;
+    if (cx.canSend) senders.push(cx);
+    if (cx.canReceive) receivers.push(cx);
   }
 
-  const monthlyRate = apr / 12;
-  return Math.ceil(
-    Math.log(1 + (balance * monthlyRate) / monthlyPayment) /
-      Math.log(1 + monthlyRate),
-  );
-}
-
-function calculateRemainingBalance(
-  balance: number,
-  apr: number,
-  monthlyPayment: number,
-  monthsElapsed: number,
-): number {
-  const monthlyRate = apr / 12;
-  const factor = Math.pow(1 + monthlyRate, monthsElapsed);
-  return balance * factor - (monthlyPayment * (factor - 1)) / monthlyRate;
-}
-
-interface DebtRepaymentPlan {
-  monthlyPayments: Array<{
-    month: number;
-    payments: Array<{
-      debtId: string;
-      amount: number;
-      isMinimum: boolean;
-    }>;
-    balanceTransfers?: Array<{
-      fromDebtId: string;
-      toDebtId: string;
-      amount: number;
-      fee: number;
-    }>;
-    remainingBalances: Array<{
-      debtId: string;
-      balance: number;
-    }>;
-  }>;
-  totalInterestPaid: number;
-  totalMonthsToPayoff: number;
-  creditScoreImpact?: {
-    maxUtilization: number;
-    averageUtilization: number;
+  // For receivers, available headroom: creditLimit - currentBalance
+  // For each sender->receiver pair, compute marginal benefit per dollar:
+  // benefit ≈ (sender monthly rate - receiver monthly rate over promo/current) * duration - fee per dollar
+  // Simplify: Use one-month horizon benefit density to rank. It aligns with avalanche direction and avoids overfitting.
+  type Edge = {
+    from: CardX;
+    to: CardX;
+    maxAmount: Decimal;
+    feePerDollar: Decimal; // dollars per $1 transferred
+    deltaMonthlyRate: Decimal; // from_mr - to_mr (non-negative helpful)
   };
+
+  const edges: Edge[] = [];
+  for (const s of senders) {
+    if (s.balance.lte(0)) continue;
+    for (const r of receivers) {
+      if (s.id === r.id) continue;
+      const rLimit = r.creditLimit ?? new Decimal(0);
+      const headroom = Decimal.max(0, rLimit.minus(r.balance));
+      if (headroom.lte(0)) continue;
+
+      // feePerDollar
+      const feePerDollar = (r as any).isFeePercent
+        ? (r as any).balanceTransferFee.div(100) // percent fee on transfer amount
+        : (r as any).balanceTransferFee.div(Decimal.max(headroom, 1)); // approximate density for ranking
+
+      const sMr = monthlyRateForDebt(s, nowTs);
+      const rMr = monthlyRateForDebt(r, nowTs);
+      const delta = Decimal.max(0, sMr.minus(rMr));
+      if (delta.lte(0) && feePerDollar.gte(delta)) continue;
+
+      const maxAmount = Decimal.min(s.balance, headroom);
+      if (maxAmount.lte(0)) continue;
+
+      edges.push({
+        from: s,
+        to: r,
+        maxAmount,
+        feePerDollar,
+        deltaMonthlyRate: delta,
+      });
+    }
+  }
+
+  // Rank by net density: deltaMonthlyRate - feePerDollar
+  edges.sort((a, b) =>
+    b.deltaMonthlyRate
+      .minus(b.feePerDollar)
+      .cmp(a.deltaMonthlyRate.minus(a.feePerDollar)),
+  );
+
+  const transfers: InitialTransfer[] = [];
+  for (const e of edges) {
+    // Recompute current capacities as we modify balances
+    const s = e.from;
+    const r = e.to;
+    const rLimit = r.creditLimit ?? new Decimal(0);
+    const headroom = Decimal.max(0, rLimit.minus(r.balance));
+    const senderAvail = s.balance;
+    const moveAmt = Decimal.min(senderAvail, headroom, e.maxAmount);
+    if (moveAmt.lte(0)) continue;
+
+    // Fee
+    const fee = (r as any).isFeePercent
+      ? clampToCents(moveAmt.mul((r as any).balanceTransferFee).div(100))
+      : clampToCents((r as any).balanceTransferFee);
+
+    // Net monthly benefit approx = moveAmt * (deltaMonthlyRate) - fee
+    const netMonthly = moveAmt.mul(e.deltaMonthlyRate).minus(fee);
+    if (netMonthly.lte(0)) continue; // not worth it
+
+    // Apply transfer
+    s.balance = s.balance.minus(moveAmt);
+    r.balance = r.balance.plus(moveAmt).plus(fee);
+
+    transfers.push({
+      from: s.id,
+      to: r.id,
+      amount: clampToCents(moveAmt).toNumber(),
+      fee: fee.toNumber(),
+    });
+  }
+  return transfers;
 }
 
 export function generateAvalanchePlan(
-  studentLoans: Array<{
-    _id: string;
-    balance: number;
-    apr: number;
-    minimumPayment: number;
-    compounded: "daily" | "monthly" | "yearly";
-  }>,
-  creditCards: Array<{
-    _id: string;
-    balance: number;
-    apr: number;
-    intro_apr: number;
-    intro_expiration_timestamp: number;
-    has_intro_promotion: boolean;
-    credit_limit: number;
-    can_send_balance_transfer: boolean;
-    can_recieve_balance_transfer: boolean;
-    balance_transfer_fee: number;
-    is_balance_transfer_fee_fixed: boolean;
-    compounded: "daily" | "monthly" | "yearly";
-  }>,
+  studentLoansIn: StudentLoanIn[],
+  creditCardsIn: CreditCardIn[],
   monthlyRepaymentAmount: number,
-  preserveCreditScore: boolean,
+  perserveCreditScore: boolean,
 ): DebtRepaymentPlan {
-  // Step 1: Calculate effective interest rates for all debts
-  const allDebts = [
-    ...studentLoans.map((loan) => ({
-      ...loan,
-      type: "loan" as const,
-      effectiveAPR: calculateEffectiveRate(
-        loan.apr,
-        getCompoundingFrequency(loan.compounded),
-      ),
-      credit_limit: 0,
-    })),
-    ...creditCards.map((card) => ({
-      ...card,
-      type: "credit_card" as const,
-      effectiveAPR: card.has_intro_promotion
-        ? calculateEffectiveRate(
-            card.intro_apr,
-            getCompoundingFrequency(card.compounded),
-          )
-        : calculateEffectiveRate(
-            card.apr,
-            getCompoundingFrequency(card.compounded),
-          ),
-      minimumPayment: Math.max(card.balance * 0.01, 25), // Typical 1% minimum
-    })),
-  ];
+  validateInputsStrict(studentLoansIn, creditCardsIn, monthlyRepaymentAmount);
+  const now0 = Date.now();
 
-  // Step 2: Validate minimum payment requirements
-  const totalMinimums = allDebts.reduce(
-    (sum, debt) => sum + debt.minimumPayment,
-    0,
+  // Normalize to internal Debt[]
+  const debts: Debt[] = [];
+  for (const l of studentLoansIn) {
+    debts.push({
+      id: l._id,
+      type: "loan",
+      compounded: l.compounded,
+      balance: new Decimal(l.balance),
+      aprAnnualPct: pctToDecimal(l.apr),
+      minimumPayment: new Decimal(l.minimumPayment),
+      issuer: l.issuer,
+      nickname: l.nickname,
+    });
+  }
+  for (const c of creditCardsIn) {
+    const d: Debt = {
+      id: c._id,
+      type: "card",
+      compounded: c.compounded,
+      balance: new Decimal(c.balance),
+      aprAnnualPct: pctToDecimal(c.apr),
+      hasIntro: c.has_intro_promotion,
+      introAprPct: pctToDecimal(c.intro_apr ?? 0),
+      introExpTs: c.intro_expiration_timestamp,
+      creditLimit: new Decimal(c.credit_limit),
+      minimumPayment: computeCardMinimum(new Decimal(c.balance)),
+      issuer: c.issuer,
+      nickname: c.nickname,
+    } as any;
+    // attach transfer metadata for initial transfer engine
+    (d as any).canSend = c.can_send_balance_transfer;
+    (d as any).canReceive = c.can_recieve_balance_transfer;
+    (d as any).isFeePercent = c.is_balance_transfer_fee_fixed; // per prompt: if true => percentage value
+    (d as any).balanceTransferFee = new Decimal(c.balance_transfer_fee);
+    debts.push(d);
+  }
+
+  // Ensure minimums are not greater than balances
+  for (const d of debts) {
+    d.minimumPayment = Decimal.min(d.minimumPayment, d.balance);
+  }
+
+  // Pre-check: monthly must be >= sum of minimums
+  const minSum = debts.reduce(
+    (s, d) => s.add(d.minimumPayment),
+    new Decimal(0),
   );
-  if (monthlyRepaymentAmount < totalMinimums) {
+  const monthlyBudget = new Decimal(monthlyRepaymentAmount);
+  if (monthlyBudget.lt(minSum)) {
     throw new Error(
-      `Monthly repayment amount ($${monthlyRepaymentAmount}) insufficient for minimum payments ($${totalMinimums})`,
+      `Monthly amount ${monthlyBudget.toNumber()} is below total minimums ${clampToCents(
+        minSum,
+      ).toNumber()}`,
     );
   }
 
-  let currentDebts = [...allDebts];
-  let totalInterestPaid = 0;
+  // Initial transfers (greedy), done only once
+  const cardDebts = debts.filter((d) => d.type === "card");
+  const initial_transfers = computeInitialTransfers(cardDebts, now0);
+
+  // Monthly loop
+  const monthly_schedule: MonthlyScheduleEntry[] = [];
   let month = 0;
-  const monthlyPayments: DebtRepaymentPlan["monthlyPayments"] = [];
+  let total_interest_paid = new Decimal(0);
 
-  while (currentDebts.length > 0 && month < 600) {
-    // 50 year maximum
+  // For utilization policy
+  const utilTarget = perserveCreditScore ? 0.3 : 0.95;
+
+  // Helper to build account balances snapshot
+  const snapshotBalances = () => {
+    const map: Record<string, number> = {};
+    for (const d of debts) {
+      map[d.id] = clampToCents(d.balance).toNumber();
+    }
+    return map;
+  };
+
+  // Continue until all balances cleared or cap months
+  while (totalBalance(debts).gt(0) && month < 600) {
     month++;
+    const nowTs = now0 + (month - 1) * 30 * 24 * 3600 * 1000;
 
-    // Step 3: Evaluate balance transfer opportunities each month
-    const transferOpportunities = optimizeBalanceTransfers(
-      creditCards.filter((card) =>
-        currentDebts.some((debt) => debt._id === card._id),
-      ),
-      monthlyRepaymentAmount,
-    );
+    // Balances at start
+    const balance_start = snapshotBalances();
 
-    const executedTransfers: Array<{
-      fromDebtId: string;
-      toDebtId: string;
-      amount: number;
-      fee: number;
-    }> = [];
+    // 1) Accrue interest first or after? Industry statements post-interest at cycle end.
+    // We'll accrue interest after payments to match "use all dollars now" while still counting interest that accrues on remaining balances.
+    // But to report monthly interest in schedule, we compute based on post-payment balances. We’ll store the actual charged interest.
 
-    // Execute most beneficial transfers first
-    for (const transfer of transferOpportunities.slice(0, 3)) {
-      // Limit to 3 transfers per month
-      const fromDebt = currentDebts.find((d) => d._id === transfer.fromCardId);
-      const toDebt = currentDebts.find((d) => d._id === transfer.toCardId);
-
-      if (fromDebt && toDebt && transfer.transferAmount > 0) {
-        // Execute transfer
-        fromDebt.balance -= transfer.transferAmount;
-        toDebt.balance += transfer.transferAmount + transfer.transferFee;
-
-        executedTransfers.push({
-          fromDebtId: transfer.fromCardId,
-          toDebtId: transfer.toCardId,
-          amount: transfer.transferAmount,
-          fee: transfer.transferFee,
-        });
-
-        totalInterestPaid += transfer.transferFee;
+    // 2) Compute minimum payments fresh (cards minimum depends on current balance)
+    for (const d of debts) {
+      if (d.type === "card") {
+        d.minimumPayment = computeCardMinimum(d.balance);
+      } else {
+        d.minimumPayment = Decimal.min(d.minimumPayment, d.balance);
       }
     }
 
-    // Step 4: Sort debts by effective APR (avalanche order)
-    currentDebts.sort((a, b) => {
-      // Handle promotional APR expirations
-      const aAPR =
-        a.type === "credit_card" &&
-        a.has_intro_promotion &&
-        Date.now() > a.intro_expiration_timestamp
-          ? a.apr
-          : a.effectiveAPR;
-      const bAPR =
-        b.type === "credit_card" &&
-        b.has_intro_promotion &&
-        Date.now() > b.intro_expiration_timestamp
-          ? b.apr
-          : b.effectiveAPR;
-
-      return bAPR - aAPR; // Highest rate first
-    });
-
-    // Step 5: Calculate monthly payments using avalanche strategy
-    let remainingPayment = monthlyRepaymentAmount;
-    const monthPayments: Array<{
-      debtId: string;
-      amount: number;
-      isMinimum: boolean;
-    }> = [];
+    // 3) Allocate payments: always spend the full monthlyBudget unless final month
+    let budget = monthlyBudget;
 
     // Pay minimums first
-    for (const debt of currentDebts) {
-      const minimumPayment = Math.min(debt.minimumPayment, debt.balance);
-      monthPayments.push({
-        debtId: debt._id,
-        amount: minimumPayment,
-        isMinimum: true,
-      });
-      remainingPayment -= minimumPayment;
-      debt.balance -= minimumPayment;
+    const paymentsMap: Record<string, Decimal> = {};
+    for (const d of debts) {
+      const minP = Decimal.min(d.minimumPayment, d.balance);
+      paymentsMap[d.id] = (paymentsMap[d.id] ?? new Decimal(0)).add(minP);
+      budget = budget.minus(minP);
     }
 
-    // Apply extra payments to highest rate debt (avalanche)
-    let debtIndex = 0;
-    while (remainingPayment > 0 && debtIndex < currentDebts.length) {
-      const targetDebt = currentDebts[debtIndex];
+    // 4) With remaining budget, allocate using avalanche by expected monthly interest cost,
+    // but respect utilization target on cards.
+    // If perserveCreditScore, we first ensure cards above target utilization are brought down towards target before extra to loans.
 
-      if (targetDebt.balance > 0) {
-        // Check credit utilization constraints
-        let maxPayment = remainingPayment;
-
-        if (preserveCreditScore && targetDebt.type === "credit_card") {
-          const maxUtilizationBalance = targetDebt.credit_limit * 0.3;
-          const maxAllowablePayment = Math.max(
-            0,
-            targetDebt.balance - maxUtilizationBalance,
-          );
-          maxPayment = Math.min(remainingPayment, maxAllowablePayment);
-        } else if (!preserveCreditScore && targetDebt.type === "credit_card") {
-          // Max 95% utilization when not preserving credit score
-          const maxUtilizationBalance = targetDebt.credit_limit * 0.95;
-          const maxAllowablePayment = Math.max(
-            0,
-            targetDebt.balance - maxUtilizationBalance,
-          );
-          maxPayment = Math.min(remainingPayment, maxAllowablePayment);
-        }
-
-        const extraPayment = Math.min(maxPayment, targetDebt.balance);
-
-        if (extraPayment > 0) {
-          monthPayments.push({
-            debtId: targetDebt._id,
-            amount: extraPayment,
-            isMinimum: false,
-          });
-          targetDebt.balance -= extraPayment;
-          remainingPayment -= extraPayment;
-        }
-      }
-
-      debtIndex++;
-    }
-
-    // Step 6: Apply monthly interest to remaining balances
-    for (const debt of currentDebts) {
-      if (debt.balance > 0) {
-        const monthlyInterest = parseFloat(
-          calculateMonthlyInterest(
-            debt.balance.toString(),
-            debt.type === "credit_card" &&
-              debt.has_intro_promotion &&
-              Date.now() <= debt.intro_expiration_timestamp
-              ? debt.intro_apr.toString()
-              : debt.apr.toString(),
-            debt.compounded,
-          ),
-        );
-
-        debt.balance += monthlyInterest;
-        totalInterestPaid += monthlyInterest;
-      }
-    }
-
-    // Step 7: Remove paid-off debts
-    currentDebts = currentDebts.filter((debt) => debt.balance > 0.01); // Allow for rounding errors
-
-    // Step 8: Record month's activity
-    monthlyPayments.push({
-      month,
-      payments: monthPayments,
-      balanceTransfers:
-        executedTransfers.length > 0 ? executedTransfers : undefined,
-      remainingBalances: currentDebts.map((debt) => ({
-        debtId: debt._id,
-        balance: Math.round(debt.balance * 100) / 100,
-      })),
-    });
-  }
-
-  // Step 9: Calculate credit score impact metrics
-  let creditScoreImpact: DebtRepaymentPlan["creditScoreImpact"];
-  if (preserveCreditScore) {
-    const finalCreditCards = creditCards.filter((card) =>
-      currentDebts.some((debt) => debt._id === card._id),
+    const order = sortByMonthlyInterestDesc(
+      debts.filter((d) => d.balance.gt(0)),
+      nowTs,
     );
 
-    const utilizations = finalCreditCards.map((card) => {
-      const finalDebt = currentDebts.find((debt) => debt._id === card._id);
-      return finalDebt ? finalDebt.balance / card.credit_limit : 0;
-    });
+    // Phase A: If preserve flag, prioritize paying down cards above target utilization to target
+    if (perserveCreditScore) {
+      for (const d of order) {
+        if (budget.lte(0)) break;
+        if (d.type !== "card") continue;
+        const limit = d.creditLimit ?? new Decimal(0);
+        if (limit.lte(0)) continue;
+        const targetBal = clampToCents(limit.mul(utilTarget));
+        if (d.balance.lte(targetBal)) continue;
+        const need = Decimal.min(budget, d.balance.minus(targetBal));
+        if (need.lte(0)) continue;
+        paymentsMap[d.id] = (paymentsMap[d.id] ?? new Decimal(0)).add(need);
+        budget = budget.minus(need);
+      }
+    }
 
-    creditScoreImpact = {
-      maxUtilization: Math.max(...utilizations, 0),
-      averageUtilization:
-        utilizations.length > 0
-          ? utilizations.reduce((a, b) => a + b) / utilizations.length
-          : 0,
+    // Phase B: Avalanche all remaining by highest expected monthly interest
+    for (const d of order) {
+      if (budget.lte(0)) break;
+      if (d.balance.lte(0)) continue;
+
+      // Utilization ceiling on cards
+      if (d.type === "card") {
+        const limit = d.creditLimit ?? new Decimal(0);
+        if (limit.gt(0)) {
+          const minAllowedBal = clampToCents(limit.mul(utilTarget)); // keep at or below target if preserve; else 95%
+          // We are paying down, so utilization cap doesn't restrict paying.
+          // But ensure we don't try to push balance negative.
+          const maxExtra = Decimal.max(0, d.balance.minus(new Decimal(0)));
+          const extra = Decimal.min(budget, maxExtra);
+          if (extra.gt(0)) {
+            paymentsMap[d.id] = (paymentsMap[d.id] ?? new Decimal(0)).add(
+              extra,
+            );
+            budget = budget.minus(extra);
+          }
+        } else {
+          // No limit info; just pay as usual
+          const extra = Decimal.min(budget, d.balance);
+          if (extra.gt(0)) {
+            paymentsMap[d.id] = (paymentsMap[d.id] ?? new Decimal(0)).add(
+              extra,
+            );
+            budget = budget.minus(extra);
+          }
+        }
+      } else {
+        // Loans: just pay as much as possible
+        const extra = Decimal.min(budget, d.balance);
+        if (extra.gt(0)) {
+          paymentsMap[d.id] = (paymentsMap[d.id] ?? new Decimal(0)).add(extra);
+          budget = budget.minus(extra);
+        }
+      }
+    }
+
+    // If we somehow still have budget and all balances will be paid off this month, cap to balances
+    if (budget.gt(0)) {
+      // This can happen only on the final month; we won't force spend.
+      // It's acceptable to leave remaining budget unused here.
+    }
+
+    // Apply payments
+    for (const d of debts) {
+      const pay = clampToCents(paymentsMap[d.id] ?? new Decimal(0));
+      if (pay.gt(d.balance)) {
+        // Guard: cap to balance
+        const capped = clampToCents(d.balance);
+        paymentsMap[d.id] = capped;
+        d.balance = d.balance.minus(capped);
+      } else {
+        d.balance = d.balance.minus(pay);
+      }
+    }
+
+    // 5) Accrue monthly interest on remaining balances
+    const interestMap: Record<string, Decimal> = {};
+    for (const d of debts) {
+      if (d.balance.lte(0)) {
+        interestMap[d.id] = new Decimal(0);
+        continue;
+      }
+      const interest = clampToCents(estimateMonthlyInterest(d, nowTs));
+      d.balance = d.balance.add(interest);
+      interestMap[d.id] = interest;
+      total_interest_paid = total_interest_paid.add(interest);
+    }
+
+    // Remove tiny dust
+    for (const d of debts) {
+      if (d.balance.abs().lt(0.005)) d.balance = new Decimal(0);
+    }
+
+    // Record schedule entry
+    const entry: MonthlyScheduleEntry = {
+      month,
+      balance_start,
+      interest: Object.fromEntries(
+        Object.entries(interestMap).map(([k, v]) => [k, v.toNumber()]),
+      ),
+      payments: Object.fromEntries(
+        Object.entries(paymentsMap).map(([k, v]) => [
+          k,
+          clampToCents(v).toNumber(),
+        ]),
+      ),
+      balance_end: snapshotBalances(),
     };
+    monthly_schedule.push(entry);
+
+    // Stop if all paid
+    if (totalBalance(debts).lte(0)) break;
   }
 
   return {
-    monthlyPayments,
-    totalInterestPaid: Math.round(totalInterestPaid * 100) / 100,
-    totalMonthsToPayoff: month,
-    creditScoreImpact,
+    initial_transfers,
+    monthly_schedule,
+    months_to_payoff: month,
+    total_interest_paid: clampToCents(total_interest_paid).toNumber(),
   };
 }
