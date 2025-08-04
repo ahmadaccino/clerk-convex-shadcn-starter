@@ -80,17 +80,35 @@ function IntroDisplay({
 
   const strategies = [
     {
+      id: "cascade",
+      name: "The Cascade Method",
+      description:
+        "Pay off your debts in a cascading order, starting with the smallest debt and working your way up.",
+      icon: TrendingDownIcon,
+      annotation: <span className="text-green-600 text-xs">(Fastest)</span>,
+    },
+    {
       id: "avalanche",
       name: "The Avalanche Method",
       description:
         "Pay off your highest interest debts first and work your way down.",
       icon: MountainSnowIcon,
+      annotation: (
+        <span className="text-red-700 text-xs">
+          (Not Implemented because it sucks ass)
+        </span>
+      ),
     },
     {
       id: "snowball",
       name: "The Snowball Method",
       description: "Pay off your smallest debts first and work your way up.",
       icon: SnowflakeIcon,
+      annotation: (
+        <span className="text-red-700 text-xs">
+          (Not Implemented because it sucks ass)
+        </span>
+      ),
     },
   ];
   return (
@@ -123,6 +141,7 @@ function IntroDisplay({
               suffix=" / month"
               className="w-auto md:text-2xl h-auto py-4 px-4"
               stepper={100}
+              incrementorButtonClassName="h-4 p-2"
             />
             <div className="flex-col text-center text-muted-foreground text-xs">
               Payments will be automatically deducted from your bank account.
@@ -169,6 +188,7 @@ function IntroDisplay({
                     <div className="grid grow gap-2 flex-1">
                       <Label htmlFor={`${id}-${strategy.id}`}>
                         {strategy.name}
+                        {strategy.annotation}
                       </Label>
                       <p
                         id={`${id}-${strategy.id}-description`}
@@ -315,40 +335,36 @@ function RepaymentPlanDisplay({
     );
   }, [studentLoans, creditCards, repaymentAmount, preserveCreditScore]);
 
-  console.log("input:", {
-    studentLoans,
-    creditCards,
-    repaymentAmount,
-    preserveCreditScore,
-  });
-  console.log("output:", plan);
-
-  // Aggregate monthly insights for charts & summaries
+  // Aggregate monthly insights for charts & summaries using plan.monthly_schedule
   const chartData = useMemo(() => {
-    let totalStartingBalance = 0;
-    const balancesById: Record<string, number> = {};
-
-    [...studentLoans, ...creditCards].forEach((d) => {
-      balancesById[d._id] = d.balance;
-      totalStartingBalance += d.balance;
-    });
+    // Starting totals
+    const totalStartingBalance = [...studentLoans, ...creditCards].reduce(
+      (s, d) => s + d.balance,
+      0,
+    );
+    const totalCcLimit =
+      creditCards.reduce((s, c) => s + c.credit_limit, 0) || 1;
 
     const data = plan.monthly_schedule.map((m) => {
-      // Sum remaining balances for this month
-      const totalBalance = m.remainingBalances.reduce(
-        (s, b) => s + b.balance,
+      const totalBalance = Object.values(m.balance_end).reduce(
+        (s: number, v: number) => s + v,
         0,
       );
-      const monthPayment = m.payments.reduce((s, p) => s + p.amount, 0);
-
-      // Approximate utilization and credit health
-      const ccBalances = m.remainingBalances.filter((b) =>
-        creditCards.some((c) => c._id === b.debtId),
+      const monthPayment = Object.values(m.payments).reduce(
+        (s: number, v: number) => s + v,
+        0,
       );
-      const totalCcBalance = ccBalances.reduce((s, b) => s + b.balance, 0);
-      const totalCcLimit =
-        creditCards.reduce((s, c) => s + c.credit_limit, 0) || 1;
-      const utilization = totalCcBalance / totalCcLimit; // 0..1
+      const monthInterest = Object.values(m.interest).reduce(
+        (s: number, v: number) => s + v,
+        0,
+      );
+
+      // Utilization approximation across all cards
+      const ccBalanceEnd = creditCards.reduce(
+        (s, c) => s + (m.balance_end[c._id] ?? 0),
+        0,
+      );
+      const utilization = ccBalanceEnd / totalCcLimit;
 
       return {
         month: m.month,
@@ -356,27 +372,19 @@ function RepaymentPlanDisplay({
         totalDebtRatio:
           totalStartingBalance === 0 ? 0 : totalBalance / totalStartingBalance,
         payment: monthPayment,
+        interest: monthInterest,
         utilization,
       };
     });
 
-    // Interest over time: approximate from deltas of total balances + payments
-    const interestData = data.map((d, idx) => {
-      if (idx === 0)
-        return {
-          month: d.month,
-          interest: Math.max(
-            0,
-            totalStartingBalance + d.payment - d.totalBalance,
-          ),
-        };
-      const prev = data[idx - 1];
-      const delta = prev.totalBalance - d.totalBalance; // principal + interest - payments
-      const interest = Math.max(0, d.payment - delta);
-      return { month: d.month, interest };
+    // Cumulative interest over time
+    let running = 0;
+    const cumulativeInterestData = data.map((d) => {
+      running += d.interest;
+      return { month: d.month, cumulativeInterest: running };
     });
 
-    return { data, interestData };
+    return { data, cumulativeInterestData };
   }, [plan, studentLoans, creditCards]);
 
   // Map debt metadata for labels/icons
@@ -404,10 +412,23 @@ function RepaymentPlanDisplay({
     return meta;
   }, [studentLoans, creditCards]);
 
-  const [selectedMonthIndex, setSelectedMonthIndex] = useState(0);
-  const selectedMonth = plan.monthlyPayments[selectedMonthIndex];
+  // Build a friendlier structure for per-month display combining balance_start/end and payments
+  const monthlyPayments = useMemo(() => {
+    return plan.monthly_schedule.map((m) => {
+      const payments = Object.entries(m.payments).map(([debtId, amount]) => ({
+        debtId,
+        amount,
+        isMinimum: false, // We don’t track min/extra separately from engine; treat all as payment
+      }));
+      const remainingBalances = Object.entries(m.balance_end).map(
+        ([debtId, balance]) => ({ debtId, balance }),
+      );
+      return { month: m.month, payments, remainingBalances };
+    });
+  }, [plan]);
 
-  console.log(plan);
+  const [selectedMonthIndex, setSelectedMonthIndex] = useState(0);
+  const selectedMonth = monthlyPayments[selectedMonthIndex];
 
   return (
     <div className="flex-1 space-y-6">
@@ -481,7 +502,7 @@ function RepaymentPlanDisplay({
             <TrendingDownIcon className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{plan.totalMonthsToPayoff}</div>
+            <div className="text-2xl font-bold">{plan.months_to_payoff}</div>
             <p className="text-xs text-muted-foreground">Projected duration</p>
           </CardContent>
         </Card>
@@ -494,7 +515,7 @@ function RepaymentPlanDisplay({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ${plan.totalInterestPaid.toLocaleString()}
+              ${plan.total_interest_paid.toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground">Cumulative interest</p>
           </CardContent>
@@ -502,15 +523,15 @@ function RepaymentPlanDisplay({
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Max Utilization
+              Initial Transfers
             </CardTitle>
             <CreditCardIcon className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {Math.round((plan.creditScoreImpact?.maxUtilization ?? 0) * 100)}%
+              {plan.initial_transfers.length}
             </div>
-            <p className="text-xs text-muted-foreground">Across cards</p>
+            <p className="text-xs text-muted-foreground">Applied at start</p>
           </CardContent>
         </Card>
         <Card>
@@ -523,11 +544,13 @@ function RepaymentPlanDisplay({
           <CardContent>
             <div className="text-2xl font-bold">
               {Math.round(
-                (plan.creditScoreImpact?.averageUtilization ?? 0) * 100,
+                (chartData.data.reduce((s, d) => s + d.utilization, 0) /
+                  (chartData.data.length || 1)) *
+                  100,
               )}
               %
             </div>
-            <p className="text-xs text-muted-foreground">Credit health</p>
+            <p className="text-xs text-muted-foreground">Across cards</p>
           </CardContent>
         </Card>
       </div>
@@ -565,15 +588,13 @@ function RepaymentPlanDisplay({
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">
-              Monthly Interest Estimated
-            </CardTitle>
+            <CardTitle className="text-sm">Monthly Interest</CardTitle>
           </CardHeader>
           <CardContent>
             <ChartContainer config={{}}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart
-                  data={chartData.interestData}
+                  data={chartData.data}
                   style={{ height: "100%", width: "100%" }}
                 >
                   <defs>
@@ -635,6 +656,65 @@ function RepaymentPlanDisplay({
         </Card>
         <Card className="lg:col-span-2">
           <CardHeader>
+            <CardTitle className="text-sm">Cumulative Interest</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer config={{}}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData.cumulativeInterestData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis tickFormatter={(v) => `$${Math.round(v)}`} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Line
+                    type="monotone"
+                    dataKey="cumulativeInterest"
+                    stroke="#9333ea"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Initial balance transfers overview */}
+      {plan.initial_transfers.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Initial Balance Transfers</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {plan.initial_transfers.map((t, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between text-sm"
+              >
+                <div>
+                  Transfer ${t.amount.toLocaleString()} from{" "}
+                  <Badge variant="outline">
+                    {debtMeta[t.from]?.name ?? t.from}
+                  </Badge>{" "}
+                  to{" "}
+                  <Badge variant="outline">
+                    {debtMeta[t.to]?.name ?? t.to}
+                  </Badge>
+                </div>
+                <div className="text-muted-foreground">
+                  Fee: ${t.fee.toLocaleString()}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Payments per month, navigable */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card className="lg:col-span-2">
+          <CardHeader>
             <CardTitle className="text-sm">Payments Per Month</CardTitle>
           </CardHeader>
           <CardContent>
@@ -656,7 +736,7 @@ function RepaymentPlanDisplay({
                   size="sm"
                   onClick={() =>
                     setSelectedMonthIndex((i) =>
-                      Math.min(plan.monthlyPayments.length - 1, i + 1),
+                      Math.min(monthlyPayments.length - 1, i + 1),
                     )
                   }
                 >
@@ -666,14 +746,17 @@ function RepaymentPlanDisplay({
               <Badge variant="secondary">
                 $
                 {(
-                  selectedMonth?.payments.reduce((s, p) => s + p.amount, 0) ?? 0
+                  selectedMonth?.payments.reduce(
+                    (s: number, p: any) => s + p.amount,
+                    0,
+                  ) ?? 0
                 ).toLocaleString()}{" "}
                 total
               </Badge>
             </div>
             <Separator />
             <div className="divide-y">
-              {selectedMonth?.payments.map((p) => {
+              {selectedMonth?.payments.map((p: any) => {
                 const meta = debtMeta[p.debtId];
                 const Icon =
                   meta?.type === "credit_card" ? CreditCardIcon : WalletIcon;
@@ -693,7 +776,7 @@ function RepaymentPlanDisplay({
                           {meta?.name ?? p.debtId}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {p.isMinimum ? "Minimum" : "Extra"} payment
+                          {p.isMinimum ? "Minimum" : "Payment"}
                         </div>
                       </div>
                     </div>
@@ -704,79 +787,50 @@ function RepaymentPlanDisplay({
                 );
               })}
             </div>
-            {selectedMonth?.balanceTransfers &&
-              selectedMonth.balanceTransfers.length > 0 && (
-                <>
-                  <Separator className="my-3" />
-                  <div className="text-sm font-medium mb-2">
-                    Balance Transfers
-                  </div>
-                  <div className="space-y-2">
-                    {selectedMonth.balanceTransfers.map((t, idx) => (
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Remaining Balances</CardTitle>
+          </CardHeader>
+          <CardContent className="h-full">
+            <div className="space-y-3">
+              {selectedMonth?.remainingBalances.map((b: any) => {
+                const meta = debtMeta[b.debtId];
+                const Icon =
+                  meta?.type === "credit_card" ? CreditCardIcon : WalletIcon;
+                return (
+                  <div
+                    key={b.debtId}
+                    className="flex items-center justify-between rounded-lg border p-3"
+                  >
+                    <div className="flex items-center gap-3">
                       <div
-                        key={idx}
-                        className="flex items-center justify-between text-sm"
+                        className={`p-2 rounded-md ${meta?.type === "credit_card" ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"}`}
                       >
-                        <div>
-                          Transfer ${t.amount.toLocaleString()} from{" "}
-                          <Badge variant="outline">
-                            {debtMeta[t.fromDebtId]?.name ?? t.fromDebtId}
-                          </Badge>{" "}
-                          to{" "}
-                          <Badge variant="outline">
-                            {debtMeta[t.toDebtId]?.name ?? t.toDebtId}
-                          </Badge>
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <div className="flex flex-col">
+                        <div className="font-medium">
+                          {meta?.name ?? b.debtId}
                         </div>
-                        <div className="text-muted-foreground">
-                          Fee: ${t.fee.toLocaleString()}
+                        <div className="text-xs text-muted-foreground">
+                          {meta?.type === "credit_card"
+                            ? "Credit Card"
+                            : "Loan"}
                         </div>
                       </div>
-                    ))}
+                    </div>
+                    <div className="text-right font-semibold">
+                      ${b.balance.toLocaleString()}
+                    </div>
                   </div>
-                </>
-              )}
+                );
+              })}
+            </div>
           </CardContent>
         </Card>
       </div>
-
-      {/* Remaining balances by debt for current month */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">
-            Remaining Balances (Month {selectedMonth?.month ?? 0})
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {selectedMonth?.remainingBalances.map((b) => {
-            const meta = debtMeta[b.debtId];
-            const Icon =
-              meta?.type === "credit_card" ? CreditCardIcon : WalletIcon;
-            return (
-              <div
-                key={b.debtId}
-                className="flex items-center justify-between rounded-lg border p-3"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`p-2 rounded-md ${meta?.type === "credit_card" ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"}`}
-                  >
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div className="flex flex-col">
-                    <div className="font-medium">{meta?.name ?? b.debtId}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {meta?.type === "credit_card" ? "Credit Card" : "Loan"}
-                    </div>
-                  </div>
-                </div>
-                <div className="text-right font-semibold">
-                  ${b.balance.toLocaleString()}
-                </div>
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -784,7 +838,7 @@ function RepaymentPlanDisplay({
 const RepaymentPageContent = (_props: { user: UserResource }) => {
   const [repaymentAmount, setRepaymentAmount] = useState(1_000);
   const [strategy, setStrategy] = useState<DebtPayoffStrategy>(
-    DebtPayoffStrategy.Avalanche,
+    DebtPayoffStrategy.Cascade,
   );
   const [preserveCreditScore, setPreserveCreditScore] = useState(false);
 

@@ -109,6 +109,7 @@ export function StudentLoanForm({
             prefix="$ "
             min={0}
             allowNegative={false}
+            decimalScale={2}
           />
         </div>
         <div className="space-y-2">
@@ -128,6 +129,7 @@ export function StudentLoanForm({
             prefix="$ "
             placeholder="Ex: 100"
             allowNegative={false}
+            decimalScale={2}
           />
         </div>
         <div className="space-y-2">

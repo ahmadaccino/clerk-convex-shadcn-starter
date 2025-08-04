@@ -23,3 +23,10 @@ export const create = mutation({
 export const get = query({
   handler: async (ctx) => await ctx.db.query("studentLoans").collect(),
 });
+
+export const deleteStudentLoan = mutation({
+  args: {
+    id: v.id("studentLoans"),
+  },
+  handler: async (ctx, args) => await ctx.db.delete(args.id),
+});

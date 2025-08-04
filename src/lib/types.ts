@@ -32,4 +32,5 @@ export type CreditCard = {
   can_recieve_balance_transfer: boolean;
   balance_transfer_fee: number;
   is_balance_transfer_fee_fixed: boolean;
+  minimum_payment: number;
 };

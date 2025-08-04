@@ -18,14 +18,13 @@ import * as React from "react";
 import { Pie, PieChart, Label as ReLabel } from "recharts";
 
 import { ChartConfig, ChartTooltipContent } from "@/components/ui/chart";
+import { CreditCard } from "@/lib/types";
 import { useMutation } from "convex/react";
 import dayjs from "dayjs";
 import { omit } from "lodash-es";
 import { Loader2Icon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
-
-export const description = "A donut chart with text";
 
 function ChartPieDonutText({
   balance,
@@ -105,22 +104,15 @@ function ChartPieDonutText({
   );
 }
 
-type CreditCard1 = {
-  issuer: string;
-  balance: number;
-  apr: number;
-  has_intro_promotion: boolean;
-  intro_apr: number;
+type CreditCard1 = Omit<
+  CreditCard,
+  "_id" | "_creationTime" | "intro_expiration_timestamp"
+> & {
   intro_expiration_date: Date;
-  compounded: "daily" | "monthly" | "yearly";
-  credit_limit: number;
-  can_send_balance_transfer: boolean;
-  can_recieve_balance_transfer: boolean;
-  balance_transfer_fee: number;
-  is_balance_transfer_fee_fixed: boolean;
 };
 
 const defaultCreditCard: CreditCard1 = {
+  nickname: "",
   issuer: "",
   balance: 0,
   apr: 0,
@@ -133,6 +125,7 @@ const defaultCreditCard: CreditCard1 = {
   can_recieve_balance_transfer: false,
   balance_transfer_fee: 0,
   is_balance_transfer_fee_fixed: false,
+  minimum_payment: 0,
 };
 
 export function CreditCardForm({
@@ -153,7 +146,10 @@ export function CreditCardForm({
     switch (step) {
       case 1:
         return (
-          form.issuer.length > 0 && form.balance > 0 && form.credit_limit > 0
+          form.issuer.length > 0 &&
+          form.balance >= 0 &&
+          form.credit_limit > 0 &&
+          form.balance < form.credit_limit
         );
       case 2:
         return (
@@ -169,7 +165,7 @@ export function CreditCardForm({
   const isValid = useMemo(() => {
     return (
       form.issuer.length > 0 &&
-      form.balance > 0 &&
+      form.balance >= 0 &&
       form.credit_limit > 0 &&
       (!form.has_intro_promotion || form.intro_expiration_date > new Date())
     );
@@ -186,7 +182,7 @@ export function CreditCardForm({
             intro_expiration_timestamp: dayjs(
               form.intro_expiration_date,
             ).unix(),
-            nickname: form.issuer,
+            nickname: form.nickname,
           },
           "intro_expiration_date",
         ),
@@ -211,6 +207,15 @@ export function CreditCardForm({
           <>
             {/* Step 1: Basic info */}
             <div className="space-y-2">
+              <Label htmlFor="nickname">Nickname</Label>
+              <Input
+                id="nickname"
+                value={form.nickname}
+                onChange={(e) => setForm({ ...form, nickname: e.target.value })}
+                placeholder="Ex: Chase, Citi, etc."
+              />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="issuer">Issuer</Label>
               <Input
                 id="issuer"
@@ -231,6 +236,7 @@ export function CreditCardForm({
                 prefix="$ "
                 min={0}
                 allowNegative={false}
+                incrementorButtonClassName="p-0 h-auto"
               />
             </div>
             <div className="space-y-2">
@@ -245,6 +251,23 @@ export function CreditCardForm({
                 prefix="$ "
                 min={0}
                 allowNegative={false}
+                incrementorButtonClassName="p-0 h-auto"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="minimumPayment">Minimum Payment</Label>
+              <NumberInput
+                id="minimumPayment"
+                value={form.minimum_payment}
+                onValueChange={(value) =>
+                  setForm({ ...form, minimum_payment: value ?? 0 })
+                }
+                thousandSeparator=","
+                prefix="$ "
+                min={0}
+                allowNegative={false}
+                incrementorButtonClassName="p-0 h-auto"
+                placeholder="Ex: 100"
               />
             </div>
             <div className="space-y-2">

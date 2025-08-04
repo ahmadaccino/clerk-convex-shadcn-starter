@@ -37,10 +37,10 @@
   --sidebar-accent-foreground: #4b3c34;
   --sidebar-border: #dcccb9;
   --sidebar-ring: #a9704f;
-  --font-sans: Manrope, sans-serif;
-  --font-serif: Libre Baskerville, serif;
+  --font-sans: Libre Baskerville, serif;
+  --font-serif: Lora, serif;
   --font-mono: IBM Plex Mono, monospace;
-  --radius: 0.8rem;
+  --radius: 1rem;
   --shadow-2xs: 2px 3px 5px 0px hsl(21.4286 13.7255% 20% / 0.06);
   --shadow-xs: 2px 3px 5px 0px hsl(21.4286 13.7255% 20% / 0.06);
   --shadow-sm:
@@ -74,7 +74,7 @@
   --primary-foreground: #2d2421;
   --secondary: #4b3d38;
   --secondary-foreground: #ede2d7;
-  --muted: #3a302c;
+  --muted: #1e1515;
   --muted-foreground: #c6b9ab;
   --accent: #5a453d;
   --accent-foreground: #ede2d7;
@@ -88,7 +88,7 @@
   --chart-3: #a9704f;
   --chart-4: #8f654a;
   --chart-5: #755238;
-  --sidebar: #2d2421;
+  --sidebar: #15100e;
   --sidebar-foreground: #ede2d7;
   --sidebar-primary: #c2977e;
   --sidebar-primary-foreground: #2d2421;
@@ -99,7 +99,7 @@
   --font-sans: Libre Baskerville, serif;
   --font-serif: Lora, serif;
   --font-mono: IBM Plex Mono, monospace;
-  --radius: 0.25rem;
+  --radius: 1rem;
   --shadow-2xs: 2px 3px 5px 0px hsl(21.4286 13.7255% 20% / 0.06);
   --shadow-xs: 2px 3px 5px 0px hsl(21.4286 13.7255% 20% / 0.06);
   --shadow-sm:

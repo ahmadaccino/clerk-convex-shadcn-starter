@@ -10,18 +10,20 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MainLayout } from "@/layout/main-layout";
 import { RedirectToSignIn, useUser } from "@clerk/clerk-react";
-import { PlusIcon } from "lucide-react";
+import { PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 
 import { CreditCardForm } from "@/components/forms/credit-card-form";
 import { StudentLoanForm } from "@/components/forms/student-loan-form";
 import { UserResource } from "@/lib/types";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 
 function HomePageContent({ user }: { user: UserResource }) {
   const creditCards = useQuery(api.creditCards.get) ?? [];
   const studentLoans = useQuery(api.studentLoans.get) ?? [];
+  const deleteCreditCard = useMutation(api.creditCards.deleteCreditCard);
+  const deleteStudentLoan = useMutation(api.studentLoans.deleteStudentLoan);
 
   const [isAddLoanModalOpen, setIsAddLoanModalOpen] = useState(false);
 
@@ -64,15 +66,15 @@ function HomePageContent({ user }: { user: UserResource }) {
           </div>
 
           <div className="space-y-8">
-            <h2 className="text-xl font-bold">Debt Distribution</h2>
             <h2 className="text-xl font-bold">Accounts & Debts Overview</h2>
             <div className="overflow-x-auto">
               <table className="w-full caption-top text-left">
                 <thead>
                   <tr>
                     <th className="px-4 py-2">Type</th>
-                    <th className="px-4 py-2">Name/Issuer</th>
+                    <th className="px-4 py-2">Name</th>
                     <th className="px-4 py-2">Amount</th>
+                    <th className="px-4 py-2"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -83,14 +85,36 @@ function HomePageContent({ user }: { user: UserResource }) {
                       <td className="px-4 py-2">
                         ${loan.balance.toLocaleString()}
                       </td>
+                      <td className="px-4 py-2">
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          onClick={() =>
+                            void deleteStudentLoan({ id: loan._id })
+                          }
+                        >
+                          <Trash2Icon />
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                   {creditCards.map((card) => (
                     <tr key={card._id} className="border-t">
                       <td className="px-4 py-2">Credit Card</td>
-                      <td className="px-4 py-2">{card.issuer}</td>
+                      <td className="px-4 py-2">{card.nickname}</td>
                       <td className="px-4 py-2">
                         ${card.balance.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2">
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          onClick={() =>
+                            void deleteCreditCard({ id: card._id })
+                          }
+                        >
+                          <Trash2Icon />
+                        </Button>
                       </td>
                     </tr>
                   ))}

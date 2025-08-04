@@ -148,7 +148,7 @@ export const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(
             <Button
               aria-label="Increase value"
               className={cn(
-                "flex-1 px-2 h-5 rounded-l-none rounded-br-none border-input border-l-0 border-b-[0.5px] focus-visible:relative",
+                "flex-1 p-0 h-auto rounded-l-none rounded-br-none border-input border-l-0 border-b-[0.5px] focus-visible:relative",
                 incrementorButtonClassName,
               )}
               variant="outline"
@@ -160,7 +160,7 @@ export const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(
             <Button
               aria-label="Decrease value"
               className={cn(
-                "flex-1 px-2 h-5 rounded-l-none rounded-tr-none border-input border-l-0 border-t-[0.5px] focus-visible:relative",
+                "flex-1 p-0 h-auto rounded-l-none rounded-tr-none border-input border-l-0 border-t-[0.5px] focus-visible:relative",
                 incrementorButtonClassName,
               )}
               variant="outline"

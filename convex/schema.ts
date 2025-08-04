@@ -21,10 +21,12 @@ export default defineSchema({
     issuer: v.string(),
     balance: v.number(),
     apr: v.number(),
+    compounded,
+    minimum_payment: v.number(),
+
     has_intro_promotion: v.boolean(),
     intro_apr: v.number(),
     intro_expiration_timestamp: v.number(),
-    compounded,
     credit_limit: v.number(),
     can_send_balance_transfer: v.boolean(),
     can_recieve_balance_transfer: v.boolean(),
