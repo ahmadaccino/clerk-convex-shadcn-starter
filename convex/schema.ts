@@ -23,6 +23,7 @@ export default defineSchema({
     apr: v.number(),
     compounded,
     minimum_payment: v.number(),
+    user_id: v.optional(v.string()),
 
     has_intro_promotion: v.boolean(),
     intro_apr: v.number(),
@@ -41,5 +42,17 @@ export default defineSchema({
     apr: v.number(),
     compounded,
     minimumPayment: v.number(),
+    user_id: v.optional(v.string()),
+  }),
+
+  debtPlanParameters: defineTable({
+    minimum_payment: v.number(),
+    strategy: v.union(
+      v.literal("cascade"),
+      v.literal("avalanche"),
+      v.literal("snowball"),
+    ),
+    preserve_credit_score: v.boolean(),
+    user_id: v.string(),
   }),
 });

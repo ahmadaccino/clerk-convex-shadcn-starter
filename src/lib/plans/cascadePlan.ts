@@ -285,7 +285,7 @@ function computeInitialTransfers(
   return transfers;
 }
 
-export function generateAvalanchePlan(
+export function generateCascadePlan(
   studentLoansIn: StudentLoanIn[],
   creditCardsIn: CreditCardIn[],
   monthlyRepaymentAmount: number,

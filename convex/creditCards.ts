@@ -25,11 +25,29 @@ export const create = mutation({
     balance_transfer_fee: v.number(),
     is_balance_transfer_fee_fixed: v.boolean(),
   },
-  handler: async (ctx, args) => await ctx.db.insert("creditCards", args),
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null || identity.email === undefined) {
+      throw new Error("Unauthenticated call to mutation");
+    }
+    return await ctx.db.insert("creditCards", {
+      ...args,
+      user_id: identity.email,
+    });
+  },
 });
 
 export const get = query({
-  handler: async (ctx) => await ctx.db.query("creditCards").collect(),
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null || identity.email === undefined) {
+      throw new Error("Unauthenticated call to mutation");
+    }
+    return await ctx.db
+      .query("creditCards")
+      .filter((q) => q.eq(q.field("user_id"), identity.email))
+      .collect();
+  },
 });
 
 export const deleteCreditCard = mutation({

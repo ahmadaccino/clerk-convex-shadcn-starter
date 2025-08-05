@@ -106,7 +106,7 @@ function ChartPieDonutText({
 
 type CreditCard1 = Omit<
   CreditCard,
-  "_id" | "_creationTime" | "intro_expiration_timestamp"
+  "_id" | "_creationTime" | "intro_expiration_timestamp" | "user_id"
 > & {
   intro_expiration_date: Date;
 };

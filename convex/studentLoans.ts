@@ -15,13 +15,29 @@ export const create = mutation({
     minimumPayment: v.number(),
   },
   handler: async (ctx, args) => {
-    const id = await ctx.db.insert("studentLoans", args);
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null || identity.email === undefined) {
+      throw new Error("Unauthenticated call to mutation");
+    }
+    const id = await ctx.db.insert("studentLoans", {
+      ...args,
+      user_id: identity.email,
+    });
     return id;
   },
 });
 
 export const get = query({
-  handler: async (ctx) => await ctx.db.query("studentLoans").collect(),
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null || identity.email === undefined) {
+      throw new Error("Unauthenticated call to mutation");
+    }
+    return await ctx.db
+      .query("studentLoans")
+      .filter((q) => q.eq(q.field("user_id"), identity.email))
+      .collect();
+  },
 });
 
 export const deleteStudentLoan = mutation({

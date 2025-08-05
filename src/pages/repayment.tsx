@@ -19,11 +19,11 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { MainLayout } from "@/layout/main-layout";
-import { generateAvalanchePlan } from "@/lib/plans/avalanchePlan";
+import { generateCascadePlan } from "@/lib/plans/cascadePlan";
 import { SetState, UserResource } from "@/lib/types";
 import { toTitleCase } from "@/lib/utils";
 import { RedirectToSignIn, useUser } from "@clerk/clerk-react";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -36,7 +36,7 @@ import {
   TrendingDownIcon,
   WalletIcon,
 } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -325,9 +325,11 @@ function RepaymentPlanDisplay({
   const studentLoans = useQuery(api.studentLoans.get) ?? [];
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const creditCards = useQuery(api.creditCards.get) ?? [];
+  console.log("studentLoans", studentLoans);
+  console.log("creditCards", creditCards);
 
   const plan = useMemo(() => {
-    return generateAvalanchePlan(
+    return generateCascadePlan(
       studentLoans,
       creditCards,
       repaymentAmount,
@@ -429,6 +431,15 @@ function RepaymentPlanDisplay({
 
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(0);
   const selectedMonth = monthlyPayments[selectedMonthIndex];
+
+  if (creditCards.length === 0 && studentLoans.length === 0) {
+    return (
+      <div>
+        No loans or credit cards found. Add your loans and credit cards to get
+        started.
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 space-y-6">
@@ -836,14 +847,35 @@ function RepaymentPlanDisplay({
 }
 
 const RepaymentPageContent = (_props: { user: UserResource }) => {
+  const debtPlanParameters = useQuery(api.debtPlan.getDebtPlanParameters);
+  const createDebtPlanParameters = useMutation(
+    api.debtPlan.createDebtPlanParameters,
+  );
+
   const [repaymentAmount, setRepaymentAmount] = useState(1_000);
   const [strategy, setStrategy] = useState<DebtPayoffStrategy>(
     DebtPayoffStrategy.Cascade,
   );
   const [preserveCreditScore, setPreserveCreditScore] = useState(false);
 
-  const [hasChosenRepaymentAmount, setHasChosenRepaymentAmount] =
-    useState(false);
+  const handleIntroSubmit = async () => {
+    await createDebtPlanParameters({
+      minimum_payment: repaymentAmount,
+      strategy,
+      preserve_credit_score: preserveCreditScore,
+    });
+  };
+
+  const hasChosenRepaymentAmount = !!debtPlanParameters;
+  console.log("debtPlanParameters", debtPlanParameters);
+
+  useEffect(() => {
+    if (!debtPlanParameters) return;
+
+    setRepaymentAmount(debtPlanParameters.minimum_payment);
+    setStrategy(debtPlanParameters.strategy as DebtPayoffStrategy);
+    setPreserveCreditScore(debtPlanParameters.preserve_credit_score);
+  }, [debtPlanParameters]);
 
   return (
     <MainLayout pageTitle="Repayment">
@@ -860,7 +892,7 @@ const RepaymentPageContent = (_props: { user: UserResource }) => {
             />
           ) : (
             <IntroDisplay
-              onSubmit={() => setHasChosenRepaymentAmount(true)}
+              onSubmit={() => void handleIntroSubmit()}
               repaymentAmount={repaymentAmount}
               setRepaymentAmount={setRepaymentAmount}
               strategy={strategy}
