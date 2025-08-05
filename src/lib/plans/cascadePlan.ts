@@ -79,6 +79,7 @@ function pctToDecimal(pct: number): Decimal {
   return new Decimal(pct).div(100);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function getCompoundingFrequency(compounded: Compounded): number {
   switch (compounded) {
     case "daily":
