@@ -14,13 +14,12 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { siteConfig } from "@/siteConfig";
-import { HomeIcon, LucideBarChart } from "lucide-react";
+import { HomeIcon } from "lucide-react";
 import { Link } from "react-router";
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const menuItems = [
     { title: "Home", icon: HomeIcon, href: "/" },
-    { title: "Repayment", icon: LucideBarChart, href: "/repayment" },
     { title: "Subscription", icon: IconCreditCard, href: "/subscription" },
   ];
 
