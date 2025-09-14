@@ -1,3 +1,3 @@
 export const siteConfig = {
-  name: "Floose",
+  name: "CCSRV",
 } as const;
