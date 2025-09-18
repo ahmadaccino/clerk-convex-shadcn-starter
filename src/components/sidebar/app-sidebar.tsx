@@ -20,7 +20,7 @@ import { Link } from "react-router";
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const menuItems = [
     { title: "Home", icon: HomeIcon, href: "/" },
-    { title: "Subscription", icon: IconCreditCard, href: "/subscription" },
+    { title: "Profile", icon: IconCreditCard, href: "/profile" },
   ];
 
   return (
