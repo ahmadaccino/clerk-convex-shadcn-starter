@@ -30,23 +30,34 @@ export function NavUser() {
           className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
           onClick={handleClick}
         >
-          <UserButton appearance={{ baseTheme: clerkTheme }}>
-            <UserButton.MenuItems>
-              <UserButton.Action
-                label={
-                  theme === "dark" ? "Turn On Light Mode" : "Turn On Dark Mode"
-                }
-                labelIcon={
-                  theme === "dark" ? (
-                    <SunIcon className="h-4 -ml-1" />
-                  ) : (
-                    <MoonIcon className="h-4 -ml-1" />
-                  )
-                }
-                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              />
-            </UserButton.MenuItems>
-          </UserButton>
+          <div className="relative w-full h-full pl-0.5 pt-0.5 md:pt-0 md:pl-0 md:w-auto md:h-auto">
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                handleClick();
+              }}
+              className="absolute top-0 left-0 w-full h-full z-10"
+            ></div>
+            <UserButton appearance={{ baseTheme: clerkTheme }}>
+              <UserButton.MenuItems>
+                <UserButton.Action
+                  label={
+                    theme === "dark"
+                      ? "Turn On Light Mode"
+                      : "Turn On Dark Mode"
+                  }
+                  labelIcon={
+                    theme === "dark" ? (
+                      <SunIcon className="h-4 -ml-1" />
+                    ) : (
+                      <MoonIcon className="h-4 -ml-1" />
+                    )
+                  }
+                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                />
+              </UserButton.MenuItems>
+            </UserButton>
+          </div>
           <div className="grid flex-1 text-left text-sm leading-tight">
             <span className="truncate font-medium">{user?.fullName}</span>
             <span className="text-muted-foreground truncate text-xs">
